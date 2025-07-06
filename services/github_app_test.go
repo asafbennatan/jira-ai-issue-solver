@@ -16,7 +16,7 @@ func TestNewGitHubAppService(t *testing.T) {
 			BotUsername    string `json:"bot_username" envconfig:"GITHUB_BOT_USERNAME"`
 			BotEmail       string `json:"bot_email" envconfig:"GITHUB_BOT_EMAIL"`
 		}{
-			AppID:          123456,
+			AppID:          1531890,
 			AppPrivateKey:  "test-private-key",
 			InstallationID: 12345678,
 			BotUsername:    "test-bot",
@@ -79,7 +79,7 @@ func TestTokenCache_ThreadSafety(t *testing.T) {
 			BotUsername    string `json:"bot_username" envconfig:"GITHUB_BOT_USERNAME"`
 			BotEmail       string `json:"bot_email" envconfig:"GITHUB_BOT_EMAIL"`
 		}{
-			AppID:          123456,
+			AppID:          1531890,
 			AppPrivateKey:  "test-private-key",
 			InstallationID: 12345678,
 			BotUsername:    "test-bot",

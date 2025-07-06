@@ -116,7 +116,7 @@ Set these environment variables for GitHub App authentication:
 
 ```bash
 # GitHub App configuration
-export GITHUB_APP_ID="123456"
+export GITHUB_APP_ID="1531890"
 export GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
 MIIEpAIBAAKCAQEA...
 -----END RSA PRIVATE KEY-----"
@@ -138,7 +138,7 @@ export JIRA_API_TOKEN="your-api-token"
 export SERVER_URL="https://your-server.com"  # Required for automatic Jira webhook registration
 
 # GitHub App configuration
-export GITHUB_APP_ID="123456"
+export GITHUB_APP_ID="1531890"
 export GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
 MIIEpAIBAAKCAQEA...
 -----END RSA PRIVATE KEY-----"

@@ -16,6 +16,7 @@ import (
 	"jira-ai-issue-solver/models"
 	"jira-ai-issue-solver/services"
 
+	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 )
 
@@ -32,6 +33,18 @@ func loadConfig() *models.Config {
 	return config
 }
 
+// loadConfigFromFile loads the configuration from a file using godotenv
+func loadConfigFromFile(configFile string) *models.Config {
+	// Load environment variables from file using godotenv
+	err := godotenv.Load(configFile)
+	if err != nil {
+		log.Fatalf("Failed to load config file %s: %v", configFile, err)
+	}
+
+	// Now load config from environment variables (which now include the file values)
+	return loadConfig()
+}
+
 func main() {
 	// Parse command-line flags
 	configFile := flag.String("config", "", "Path to config file")
@@ -42,11 +55,11 @@ func main() {
 
 	if *configFile != "" {
 		// Load from file if provided
-		// For simplicity, we're not implementing file loading
-		log.Printf("Config file loading not implemented, using environment variables")
-		config = loadConfig()
+		log.Printf("Loading configuration from file: %s", *configFile)
+		config = loadConfigFromFile(*configFile)
 	} else {
 		// Load from environment variables
+		log.Println("Loading configuration from environment variables")
 		config = loadConfig()
 	}
 
