@@ -49,9 +49,10 @@ type GitHubService interface {
 
 // GitHubServiceImpl implements the GitHubService interface
 type GitHubServiceImpl struct {
-	config   *models.Config
-	client   *http.Client
-	executor models.CommandExecutor
+	config     *models.Config
+	client     *http.Client
+	executor   models.CommandExecutor
+	appService GitHubAppService
 }
 
 // NewGitHubService creates a new GitHubService
@@ -60,10 +61,15 @@ func NewGitHubService(config *models.Config, executor ...models.CommandExecutor)
 	if len(executor) > 0 {
 		commandExecutor = executor[0]
 	}
+
+	// Create GitHub App service
+	appService := NewGitHubAppService(config)
+
 	return &GitHubServiceImpl{
-		config:   config,
-		client:   &http.Client{},
-		executor: commandExecutor,
+		config:     config,
+		client:     &http.Client{},
+		executor:   commandExecutor,
+		appService: appService,
 	}
 }
 
@@ -100,15 +106,15 @@ func (s *GitHubServiceImpl) CloneRepository(repoURL, directory string) error {
 		return fmt.Errorf("failed to clone repository: %w, stderr: %s", err, stderr.String())
 	}
 
-	// Configure git user
-	cmd = s.executor("git", "config", "user.name", s.config.GitHub.Username)
+	// Configure git user for GitHub App
+	cmd = s.executor("git", "config", "user.name", s.config.GitHub.BotUsername)
 	cmd.Dir = directory
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to configure git user name: %w", err)
 	}
 
-	cmd = s.executor("git", "config", "user.email", s.config.GitHub.Email)
+	cmd = s.executor("git", "config", "user.email", s.config.GitHub.BotEmail)
 	cmd.Dir = directory
 
 	if err := cmd.Run(); err != nil {
@@ -116,6 +122,14 @@ func (s *GitHubServiceImpl) CloneRepository(repoURL, directory string) error {
 	}
 
 	return nil
+}
+
+// getAuthToken returns the GitHub App installation token for API calls
+func (s *GitHubServiceImpl) getAuthToken() (string, error) {
+	if s.appService == nil {
+		return "", fmt.Errorf("GitHub App service not configured")
+	}
+	return s.appService.GetInstallationToken()
 }
 
 // CreateBranch creates a new branch in a local repository based on the latest origin/main
@@ -264,7 +278,13 @@ func (s *GitHubServiceImpl) CreatePullRequest(owner, repo, title, body, head, ba
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("token %s", s.config.GitHub.APIToken))
+	// Get authentication token
+	token, err := s.getAuthToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get auth token: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("token %s", token))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
@@ -296,6 +316,12 @@ func (s *GitHubServiceImpl) ValidateWebhookSignature(body []byte, signature stri
 
 // CheckForkExists checks if a fork already exists for the given repository
 func (s *GitHubServiceImpl) CheckForkExists(owner, repo string) (exists bool, cloneURL string, err error) {
+	// Get authentication token
+	token, err := s.getAuthToken()
+	if err != nil {
+		return false, "", fmt.Errorf("failed to get auth token: %w", err)
+	}
+
 	// Check if the fork already exists by listing the bot's repositories
 	url := fmt.Sprintf("https://api.github.com/users/%s/repos", s.config.GitHub.BotUsername)
 
@@ -304,8 +330,8 @@ func (s *GitHubServiceImpl) CheckForkExists(owner, repo string) (exists bool, cl
 		return false, "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Use the bot's token
-	req.Header.Set("Authorization", fmt.Sprintf("token %s", s.config.GitHub.BotToken))
+	// Use the authentication token
+	req.Header.Set("Authorization", fmt.Sprintf("token %s", token))
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
 	resp, err := s.client.Do(req)
@@ -404,6 +430,12 @@ func (s *GitHubServiceImpl) ResetFork(forkCloneURL, directory string) error {
 
 // ForkRepository forks a repository and returns the clone URL of the fork
 func (s *GitHubServiceImpl) ForkRepository(owner, repo string) (string, error) {
+	// Get authentication token
+	token, err := s.getAuthToken()
+	if err != nil {
+		return "", fmt.Errorf("failed to get auth token: %w", err)
+	}
+
 	// Create a new fork
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/forks", owner, repo)
 
@@ -412,8 +444,8 @@ func (s *GitHubServiceImpl) ForkRepository(owner, repo string) (string, error) {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Use the bot's token
-	req.Header.Set("Authorization", fmt.Sprintf("token %s", s.config.GitHub.BotToken))
+	// Use the authentication token
+	req.Header.Set("Authorization", fmt.Sprintf("token %s", token))
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
 	resp, err := s.client.Do(req)
@@ -441,6 +473,12 @@ func (s *GitHubServiceImpl) ForkRepository(owner, repo string) (string, error) {
 
 // SyncForkWithUpstream syncs a fork with its upstream repository
 func (s *GitHubServiceImpl) SyncForkWithUpstream(owner, repo string) error {
+	// Get authentication token
+	token, err := s.getAuthToken()
+	if err != nil {
+		return fmt.Errorf("failed to get auth token: %w", err)
+	}
+
 	// Get the fork details to sync with upstream
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", s.config.GitHub.BotUsername, repo)
 
@@ -449,7 +487,7 @@ func (s *GitHubServiceImpl) SyncForkWithUpstream(owner, repo string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("token %s", s.config.GitHub.BotToken))
+	req.Header.Set("Authorization", fmt.Sprintf("token %s", token))
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
 	resp, err := s.client.Do(req)
@@ -492,7 +530,7 @@ func (s *GitHubServiceImpl) SyncForkWithUpstream(owner, repo string) error {
 		return fmt.Errorf("failed to create sync request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("token %s", s.config.GitHub.BotToken))
+	req.Header.Set("Authorization", fmt.Sprintf("token %s", token))
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("Content-Type", "application/json")
 

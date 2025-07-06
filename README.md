@@ -42,12 +42,11 @@ The application is configured using environment variables:
 - `JIRA_WEBHOOK_SECRET`: The secret for validating Jira webhooks
 
 ### GitHub Configuration
-- `GITHUB_API_TOKEN`: Your GitHub API token (for main account)
-- `GITHUB_USERNAME`: Your GitHub username (main account)
-- `GITHUB_EMAIL`: Your GitHub email (main account)
-- `GITHUB_BOT_USERNAME`: The username of the GitHub bot account that will own the forks
-- `GITHUB_BOT_TOKEN`: The API token for the GitHub bot account
-- `GITHUB_BOT_EMAIL`: The email address of the GitHub bot account
+- `GITHUB_APP_ID`: Your GitHub App ID
+- `GITHUB_APP_PRIVATE_KEY`: Your GitHub App private key (PEM format)
+- `GITHUB_INSTALLATION_ID`: The installation ID of your GitHub App
+- `GITHUB_BOT_USERNAME`: The username that will be used for git commits (usually your organization's bot account)
+- `GITHUB_BOT_EMAIL`: The email address for git commits
 
 ### Claude CLI Configuration
 - `CLAUDE_CLI_PATH`: The path to the Claude CLI executable (default: claude-cli)
@@ -76,56 +75,56 @@ The application can automatically register and refresh the Jira webhook on start
 
 ### GitHub Setup
 
-#### 1. Create a GitHub Bot Account
+#### 1. Create a GitHub App
 
-1. Create a new GitHub account that will serve as your bot account (e.g., `your-org-ai-bot`)
-2. This account will own the forks and create pull requests on behalf of the AI
+1. Go to your GitHub organization or user account
+2. Navigate to **Settings** → **Developer settings** → **GitHub Apps**
+3. Click **New GitHub App**
+4. Fill in the app details:
+   - **App name**: `jira-ai-issue-solver` (or your preferred name)
+   - **Homepage URL**: `https://your-server.com`
+   - **Webhook URL**: `https://your-server.com/webhook/github` (optional)
+   - **Webhook secret**: Generate a secure secret
+5. Set the following permissions:
+   - **Repository permissions**:
+     - `Contents`: Read and write
+     - `Metadata`: Read-only
+     - `Pull requests`: Read and write
+     - `Workflows`: Read and write
+   - **Organization permissions**:
+     - `Members`: Read-only (if needed)
+6. Click **Create GitHub App**
 
-#### 2. Generate GitHub Personal Access Token for Bot Account
+#### 2. Generate Private Key
 
-1. Log in to the bot's GitHub account
-2. Go to **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**
-3. Click **Generate new token (classic)**
-4. Give it a descriptive name like "Jira AI Issue Solver Bot"
-5. Set the expiration as needed (or choose "No expiration" for long-term use)
-6. Select the following scopes:
-   - `repo` (Full control of private repositories)
-   - `workflow` (Update GitHub Action workflows)
-7. Click **Generate token**
-8. **Copy the token immediately** - you won't be able to see it again
-9. This token will be used as `GITHUB_BOT_TOKEN`
+1. After creating the app, go to the app's settings page
+2. Scroll down to **Private keys** section
+3. Click **Generate private key**
+4. Download the private key file (`.pem` format)
+5. **Copy the private key content** - you'll need this for the `GITHUB_APP_PRIVATE_KEY` environment variable
 
-#### 3. Generate GitHub Personal Access Token for Main Account
+#### 3. Install the GitHub App
 
-1. Log in to your main GitHub account (the one that owns the repositories)
-2. Go to **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**
-3. Click **Generate new token (classic)**
-4. Give it a descriptive name like "Jira AI Issue Solver"
-5. Set the expiration as needed
-6. Select the following scopes:
-   - `repo` (Full control of private repositories)
-   - `admin:org` (Full control of organizations and teams)
-   - `admin:repo_hook` (Full control of repository hooks)
-7. Click **Generate token**
-8. **Copy the token immediately** - you won't be able to see it again
-9. This token will be used as `GITHUB_API_TOKEN`
+1. Go to your GitHub App's settings page
+2. Click **Install App**
+3. Choose the repositories or organizations where you want to install the app
+4. Note the **Installation ID** from the URL (you'll need this for `GITHUB_INSTALLATION_ID`)
 
 #### 4. Environment Variables
 
-Set these environment variables for the GitHub integration:
+Set these environment variables for GitHub App authentication:
 
 ```bash
-# Main account token (for webhook management and repository access)
-export GITHUB_API_TOKEN="ghp_your_main_account_token_here"
+# GitHub App configuration
+export GITHUB_APP_ID="123456"
+export GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA...
+-----END RSA PRIVATE KEY-----"
+export GITHUB_INSTALLATION_ID="12345678"
 
-# Bot account credentials
+# Git commit configuration
 export GITHUB_BOT_USERNAME="your-org-ai-bot"
-export GITHUB_BOT_TOKEN="ghp_your_bot_account_token_here"
 export GITHUB_BOT_EMAIL="ai-bot@your-org.com"
-
-# Your main account details (for git configuration)
-export GITHUB_USERNAME="your-main-username"
-export GITHUB_EMAIL="your-email@your-org.com"
 ```
 
 
@@ -136,13 +135,16 @@ export GITHUB_EMAIL="your-email@your-org.com"
 export JIRA_BASE_URL="https://your-domain.atlassian.net"
 export JIRA_USERNAME="your-username"
 export JIRA_API_TOKEN="your-api-token"
-export GITHUB_API_TOKEN="your-github-token"
-export GITHUB_USERNAME="your-github-username"
-export GITHUB_EMAIL="your-github-email"
-export GITHUB_BOT_USERNAME="your-bot-username"
-export GITHUB_BOT_TOKEN="your-bot-token"
-export GITHUB_BOT_EMAIL="your-bot-email"
 export SERVER_URL="https://your-server.com"  # Required for automatic Jira webhook registration
+
+# GitHub App configuration
+export GITHUB_APP_ID="123456"
+export GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA...
+-----END RSA PRIVATE KEY-----"
+export GITHUB_INSTALLATION_ID="12345678"
+export GITHUB_BOT_USERNAME="your-org-ai-bot"
+export GITHUB_BOT_EMAIL="ai-bot@your-org.com"
 
 # Claude CLI configuration
 export CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=true  # Use with caution

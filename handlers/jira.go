@@ -185,7 +185,7 @@ func (h *JiraWebhookHandler) processTicket(ticketKey string) {
 		return
 	}
 
-	// Configure git to use the bot's credentials
+	// Configure git to use the bot credentials
 	cmd := exec.Command("git", "config", "user.name", h.config.GitHub.BotUsername)
 	cmd.Dir = repoDir
 	if err := cmd.Run(); err != nil {

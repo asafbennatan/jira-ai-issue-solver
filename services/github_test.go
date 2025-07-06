@@ -14,6 +14,26 @@ import (
 // It can be replaced with a mock for testing
 var execCommand = exec.Command
 
+// MockGitHubAppService is a mock implementation of GitHubAppService
+type MockGitHubAppService struct {
+	GetInstallationTokenFunc func() (string, error)
+	GetAppTokenFunc          func() (string, error)
+}
+
+func (m *MockGitHubAppService) GetInstallationToken() (string, error) {
+	if m.GetInstallationTokenFunc != nil {
+		return m.GetInstallationTokenFunc()
+	}
+	return "mock-installation-token", nil
+}
+
+func (m *MockGitHubAppService) GetAppToken() (string, error) {
+	if m.GetAppTokenFunc != nil {
+		return m.GetAppTokenFunc()
+	}
+	return "mock-app-token", nil
+}
+
 // TestCreatePullRequest tests the CreatePullRequest method
 func TestCreatePullRequest(t *testing.T) {
 	// Test cases
@@ -87,26 +107,33 @@ func TestCreatePullRequest(t *testing.T) {
 				return tc.mockResponse, tc.mockError
 			})
 
+			// Create a mock GitHub App service
+			mockAppService := &MockGitHubAppService{
+				GetInstallationTokenFunc: func() (string, error) {
+					return "mock-installation-token", nil
+				},
+			}
+
 			// Create a GitHubService with the mock client
 			service := &GitHubServiceImpl{
 				config: &models.Config{
 					GitHub: struct {
-						APIToken      string `json:"api_token" envconfig:"GITHUB_API_TOKEN"`
-						WebhookSecret string `json:"webhook_secret" envconfig:"GITHUB_WEBHOOK_SECRET"`
-						Username      string `json:"username" envconfig:"GITHUB_USERNAME"`
-						Email         string `json:"email" envconfig:"GITHUB_EMAIL"`
-						BotUsername   string `json:"bot_username" envconfig:"GITHUB_BOT_USERNAME"`
-						BotToken      string `json:"bot_token" envconfig:"GITHUB_BOT_TOKEN"`
-						BotEmail      string `json:"bot_email" envconfig:"GITHUB_BOT_EMAIL"`
+						AppID          int64  `json:"app_id" envconfig:"GITHUB_APP_ID"`
+						AppPrivateKey  string `json:"app_private_key" envconfig:"GITHUB_APP_PRIVATE_KEY"`
+						InstallationID int64  `json:"installation_id" envconfig:"GITHUB_INSTALLATION_ID"`
+						BotUsername    string `json:"bot_username" envconfig:"GITHUB_BOT_USERNAME"`
+						BotEmail       string `json:"bot_email" envconfig:"GITHUB_BOT_EMAIL"`
 					}{
-						APIToken:    "test-token",
-						BotUsername: "test-bot",
-						BotToken:    "test-bot-token",
-						BotEmail:    "test-bot@example.com",
+						AppID:          123456,
+						AppPrivateKey:  "test-private-key",
+						InstallationID: 12345678,
+						BotUsername:    "test-bot",
+						BotEmail:       "test-bot@example.com",
 					},
 				},
-				client:   mockClient,
-				executor: execCommand,
+				client:     mockClient,
+				executor:   execCommand,
+				appService: mockAppService,
 			}
 
 			// Call the method being tested
@@ -204,21 +231,21 @@ func TestGitHubValidateWebhookSignature(t *testing.T) {
 	service := &GitHubServiceImpl{
 		config: &models.Config{
 			GitHub: struct {
-				APIToken      string `json:"api_token" envconfig:"GITHUB_API_TOKEN"`
-				WebhookSecret string `json:"webhook_secret" envconfig:"GITHUB_WEBHOOK_SECRET"`
-				Username      string `json:"username" envconfig:"GITHUB_USERNAME"`
-				Email         string `json:"email" envconfig:"GITHUB_EMAIL"`
-				BotUsername   string `json:"bot_username" envconfig:"GITHUB_BOT_USERNAME"`
-				BotToken      string `json:"bot_token" envconfig:"GITHUB_BOT_TOKEN"`
-				BotEmail      string `json:"bot_email" envconfig:"GITHUB_BOT_EMAIL"`
+				AppID          int64  `json:"app_id" envconfig:"GITHUB_APP_ID"`
+				AppPrivateKey  string `json:"app_private_key" envconfig:"GITHUB_APP_PRIVATE_KEY"`
+				InstallationID int64  `json:"installation_id" envconfig:"GITHUB_INSTALLATION_ID"`
+				BotUsername    string `json:"bot_username" envconfig:"GITHUB_BOT_USERNAME"`
+				BotEmail       string `json:"bot_email" envconfig:"GITHUB_BOT_EMAIL"`
 			}{
-				WebhookSecret: "test-secret",
-				BotUsername:   "test-bot",
-				BotToken:      "test-bot-token",
-				BotEmail:      "test-bot@example.com",
+				AppID:          123456,
+				AppPrivateKey:  "test-private-key",
+				InstallationID: 12345678,
+				BotUsername:    "test-bot",
+				BotEmail:       "test-bot@example.com",
 			},
 		},
-		executor: execCommand,
+		executor:   execCommand,
+		appService: &MockGitHubAppService{},
 	}
 
 	// Test the method
