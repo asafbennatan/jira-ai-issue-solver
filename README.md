@@ -10,16 +10,15 @@ The Jira AI Issue Solver is a service that automatically creates Pull Requests f
   - Makes changes in the fork rather than directly in the main repository
   - Creates pull requests from the fork to the original repository
 - Uses Claude CLI to generate code changes based on the ticket description
-- Processes PR review comments and makes additional changes to address feedback
 - Updates Jira ticket status and adds comments with links to the PR
 
 ## Architecture
 
-The system consists of a single, long-running Go service that receives webhooks from Jira and GitHub. It interacts with:
+The system consists of a single, long-running Go service that receives webhooks from Jira. It interacts with:
 
 - Jira API: To fetch ticket details and update ticket status and labels
 - GitHub API: To create PRs and interact with repositories
-- Claude CLI: To generate code changes based on ticket descriptions and PR feedback
+- Claude CLI: To generate code changes based on ticket descriptions
 
 ## Prerequisites
 
@@ -43,10 +42,9 @@ The application is configured using environment variables:
 - `JIRA_WEBHOOK_SECRET`: The secret for validating Jira webhooks
 
 ### GitHub Configuration
-- `GITHUB_API_TOKEN`: Your GitHub API token
-- `GITHUB_WEBHOOK_SECRET`: The secret for validating GitHub webhooks
-- `GITHUB_USERNAME`: Your GitHub username
-- `GITHUB_EMAIL`: Your GitHub email
+- `GITHUB_API_TOKEN`: Your GitHub API token (for main account)
+- `GITHUB_USERNAME`: Your GitHub username (main account)
+- `GITHUB_EMAIL`: Your GitHub email (main account)
 - `GITHUB_BOT_USERNAME`: The username of the GitHub bot account that will own the forks
 - `GITHUB_BOT_TOKEN`: The API token for the GitHub bot account
 - `GITHUB_BOT_EMAIL`: The email address of the GitHub bot account
@@ -78,11 +76,58 @@ The application can automatically register and refresh the Jira webhook on start
 
 ### GitHub Setup
 
-1. Create a webhook in your GitHub repository with the following configuration:
-   - URL: `https://your-server/webhook/github`
-   - Events: `Pull request reviews`
-   - Content type: `application/json`
-   - Secret: The same value as `GITHUB_WEBHOOK_SECRET`
+#### 1. Create a GitHub Bot Account
+
+1. Create a new GitHub account that will serve as your bot account (e.g., `your-org-ai-bot`)
+2. This account will own the forks and create pull requests on behalf of the AI
+
+#### 2. Generate GitHub Personal Access Token for Bot Account
+
+1. Log in to the bot's GitHub account
+2. Go to **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**
+3. Click **Generate new token (classic)**
+4. Give it a descriptive name like "Jira AI Issue Solver Bot"
+5. Set the expiration as needed (or choose "No expiration" for long-term use)
+6. Select the following scopes:
+   - `repo` (Full control of private repositories)
+   - `workflow` (Update GitHub Action workflows)
+7. Click **Generate token**
+8. **Copy the token immediately** - you won't be able to see it again
+9. This token will be used as `GITHUB_BOT_TOKEN`
+
+#### 3. Generate GitHub Personal Access Token for Main Account
+
+1. Log in to your main GitHub account (the one that owns the repositories)
+2. Go to **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**
+3. Click **Generate new token (classic)**
+4. Give it a descriptive name like "Jira AI Issue Solver"
+5. Set the expiration as needed
+6. Select the following scopes:
+   - `repo` (Full control of private repositories)
+   - `admin:org` (Full control of organizations and teams)
+   - `admin:repo_hook` (Full control of repository hooks)
+7. Click **Generate token**
+8. **Copy the token immediately** - you won't be able to see it again
+9. This token will be used as `GITHUB_API_TOKEN`
+
+#### 4. Environment Variables
+
+Set these environment variables for the GitHub integration:
+
+```bash
+# Main account token (for webhook management and repository access)
+export GITHUB_API_TOKEN="ghp_your_main_account_token_here"
+
+# Bot account credentials
+export GITHUB_BOT_USERNAME="your-org-ai-bot"
+export GITHUB_BOT_TOKEN="ghp_your_bot_account_token_here"
+export GITHUB_BOT_EMAIL="ai-bot@your-org.com"
+
+# Your main account details (for git configuration)
+export GITHUB_USERNAME="your-main-username"
+export GITHUB_EMAIL="your-email@your-org.com"
+```
+
 
 ## Running the Application
 
@@ -106,66 +151,27 @@ export CLAUDE_DISALLOWED_TOOLS="Python"  # Optional: Comma or space-separated li
 
 # Run the application
 go run main.go
+
+# Or build and run
+go build -o jira-ai-solver
+./jira-ai-solver
 ```
 
-## Testing the Application
+## Testing
 
-The application includes a test mode that can be used to verify that the integrations are working correctly.
+The project includes comprehensive unit tests for all components. Run the tests using:
 
 ```bash
-# Set test environment variables
-export TEST_JIRA=true
-export TEST_JIRA_TICKET_KEY="KEY-123"
-export TEST_ADD_COMMENT=false
-export TEST_REGISTER_WEBHOOK=false
-export TEST_SERVER_URL="https://your-server.com"
+# Run all tests
+go test ./...
 
-export TEST_GITHUB=true
-export TEST_GITHUB_REPO_URL="https://github.com/username/repo.git"
-export TEST_GITHUB_BOT_USERNAME="your-bot-username"
-export TEST_GITHUB_BOT_TOKEN="your-bot-token"
-export TEST_GITHUB_BOT_EMAIL="your-bot-email"
-export TEST_CREATE_BRANCH=false
-export TEST_PUSH_CHANGES=false
-export TEST_CREATE_PR=false
-export TEST_FORK_REPO=false
+# Run tests with verbose output
+go test -v ./...
 
-export TEST_CLAUDE=true
-export TEST_REPO_DIR="/path/to/repo"
-export TEST_CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=true
-export TEST_CLAUDE_ALLOWED_TOOLS="Bash Edit"
-export TEST_CLAUDE_DISALLOWED_TOOLS="Python"
-
-# Run the tests
-go run main.go -test
+# Run tests for a specific package
+go test ./handlers
+go test ./services
 ```
-
-You can control which tests to run and how they behave using the following environment variables:
-
-### Jira Test Variables
-- `TEST_JIRA`: Set to "true" to run Jira integration tests
-- `TEST_JIRA_TICKET_KEY`: The key of a Jira ticket to use for testing
-- `TEST_ADD_COMMENT`: Set to "true" to test adding a comment to the ticket
-- `TEST_REGISTER_WEBHOOK`: Set to "true" to test webhook registration
-- `TEST_SERVER_URL`: The URL of the server to use for webhook registration (required if `TEST_REGISTER_WEBHOOK` is "true")
-
-### GitHub Test Variables
-- `TEST_GITHUB`: Set to "true" to run GitHub integration tests
-- `TEST_GITHUB_REPO_URL`: The URL of a GitHub repository to use for testing
-- `TEST_GITHUB_BOT_USERNAME`: The username of the GitHub bot account to use for testing
-- `TEST_GITHUB_BOT_TOKEN`: The API token for the GitHub bot account to use for testing
-- `TEST_GITHUB_BOT_EMAIL`: The email address of the GitHub bot account to use for testing
-- `TEST_FORK_REPO`: Set to "true" to test forking a repository
-- `TEST_CREATE_BRANCH`: Set to "true" to test creating a branch
-- `TEST_PUSH_CHANGES`: Set to "true" to test pushing changes
-- `TEST_CREATE_PR`: Set to "true" to test creating a pull request
-
-### Claude CLI Test Variables
-- `TEST_CLAUDE`: Set to "true" to run Claude CLI integration tests
-- `TEST_REPO_DIR`: The directory of a repository to use for testing (optional)
-- `TEST_CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS`: Set to "true" to use the `--dangerously-skip-permissions` flag
-- `TEST_CLAUDE_ALLOWED_TOOLS`: Comma or space-separated list of tool names to allow
-- `TEST_CLAUDE_DISALLOWED_TOOLS`: Comma or space-separated list of tool names to deny
 
 ## How It Works
 
@@ -200,17 +206,21 @@ The service uses the following labels to track the status of tickets:
 - `ai-pr-created`: Indicates that the AI has created a PR for the ticket.
 - `ai-failed`: Indicates that the AI failed to process the ticket.
 
-## Benefits of Fork+PR Workflow
-
-The fork+PR workflow provides several benefits over the branch+PR workflow:
-
-- **Better Isolation**: Changes are made in a separate fork, not directly in the main repository
-- **Cleaner Repository**: The main repository doesn't get cluttered with numerous AI-generated branches
-- **Improved Security**: The bot only needs push access to its own fork, not the main repository
-- **Easier Cleanup**: Forks can be deleted when no longer needed without affecting the main repository
 
 ## Limitations
 
 - The service does not handle merge conflicts.
 - The service does not handle complex code changes that require deep understanding of the codebase.
 - The service does not handle tickets that require changes to multiple repositories.
+- The service does not handle PR review feedback or change requests (this will be handled by a separate complementary project).
+
+## Future Enhancements
+
+A complementary project is planned to handle GitHub webhook events for pull request reviews and change requests. This separate service will:
+
+- Process PR review comments and feedback
+- Automatically make requested changes to existing PRs
+- Handle iterative improvements based on human feedback
+- Maintain the same fork+PR workflow for consistency
+
+This separation allows for better modularity and focused responsibility between initial ticket processing and ongoing PR refinement.

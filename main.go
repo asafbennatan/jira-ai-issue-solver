@@ -15,7 +15,6 @@ import (
 	"jira-ai-issue-solver/handlers"
 	"jira-ai-issue-solver/models"
 	"jira-ai-issue-solver/services"
-	"jira-ai-issue-solver/utils"
 
 	"github.com/kelseyhightower/envconfig"
 )
@@ -36,7 +35,6 @@ func loadConfig() *models.Config {
 func main() {
 	// Parse command-line flags
 	configFile := flag.String("config", "", "Path to config file")
-	testMode := flag.Bool("test", false, "Run in test mode")
 	flag.Parse()
 
 	// Load configuration
@@ -50,13 +48,6 @@ func main() {
 	} else {
 		// Load from environment variables
 		config = loadConfig()
-	}
-
-	// Run tests if in test mode
-	if *testMode {
-		log.Println("Running in test mode")
-		utils.RunTests(config)
-		return
 	}
 
 	// Create services
