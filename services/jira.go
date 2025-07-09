@@ -26,20 +26,8 @@ type JiraService interface {
 	// AddComment adds a comment to a ticket
 	AddComment(key string, comment string) error
 
-	// ValidateWebhookSignature validates the signature of a webhook
-	ValidateWebhookSignature(body []byte, signature string) bool
-
-	// RegisterWebhook registers a webhook with Jira
-	RegisterWebhook(webhook *models.JiraWebhookRegistration) (*models.JiraWebhookResponse, error)
-
-	// GetWebhooks gets all webhooks registered with Jira
-	GetWebhooks() ([]models.JiraWebhookResponse, error)
-
-	// DeleteWebhook deletes a webhook from Jira
-	DeleteWebhook(webhookID int) error
-
-	// RegisterOrRefreshWebhook registers a new webhook or refreshes an existing one
-	RegisterOrRefreshWebhook(serverURL string) error
+	// SearchTickets searches for tickets using JQL
+	SearchTickets(jql string) (*models.JiraSearchResponse, error)
 }
 
 // JiraServiceImpl implements the JiraService interface
@@ -71,7 +59,7 @@ func (s *JiraServiceImpl) GetTicket(key string) (*models.JiraTicketResponse, err
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.SetBasicAuth(s.config.Jira.Username, s.config.Jira.APIToken)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.Jira.APIToken))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(req)
@@ -142,7 +130,7 @@ func (s *JiraServiceImpl) UpdateTicketLabels(key string, addLabels, removeLabels
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.SetBasicAuth(s.config.Jira.Username, s.config.Jira.APIToken)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.Jira.APIToken))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(req)
@@ -169,7 +157,7 @@ func (s *JiraServiceImpl) UpdateTicketStatus(key string, status string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.SetBasicAuth(s.config.Jira.Username, s.config.Jira.APIToken)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.Jira.APIToken))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(req)
@@ -227,7 +215,7 @@ func (s *JiraServiceImpl) UpdateTicketStatus(key string, status string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.SetBasicAuth(s.config.Jira.Username, s.config.Jira.APIToken)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.Jira.APIToken))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err = s.client.Do(req)
@@ -262,7 +250,7 @@ func (s *JiraServiceImpl) AddComment(key string, comment string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.SetBasicAuth(s.config.Jira.Username, s.config.Jira.APIToken)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.Jira.APIToken))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(req)
@@ -279,20 +267,20 @@ func (s *JiraServiceImpl) AddComment(key string, comment string) error {
 	return nil
 }
 
-// ValidateWebhookSignature validates the signature of a webhook
-func (s *JiraServiceImpl) ValidateWebhookSignature(body []byte, signature string) bool {
-	// Implement webhook signature validation if needed
-	// For simplicity, we're not implementing this now
-	return true
-}
+// SearchTickets searches for tickets using JQL
+func (s *JiraServiceImpl) SearchTickets(jql string) (*models.JiraSearchResponse, error) {
+	url := fmt.Sprintf("%s/rest/api/2/search", s.config.Jira.BaseURL)
 
-// RegisterWebhook registers a webhook with Jira
-func (s *JiraServiceImpl) RegisterWebhook(webhook *models.JiraWebhookRegistration) (*models.JiraWebhookResponse, error) {
-	url := fmt.Sprintf("%s/rest/api/2/webhook", s.config.Jira.BaseURL)
+	payload := map[string]interface{}{
+		"jql":        jql,
+		"startAt":    0,
+		"maxResults": 100,
+		"fields":     []string{"summary", "description", "status", "project", "components", "labels", "created", "updated", "creator", "reporter"},
+	}
 
-	jsonPayload, err := json.Marshal(webhook)
+	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal webhook payload: %w", err)
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
@@ -300,38 +288,7 @@ func (s *JiraServiceImpl) RegisterWebhook(webhook *models.JiraWebhookRegistratio
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.SetBasicAuth(s.config.Jira.Username, s.config.Jira.APIToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to register webhook: %s, status code: %d", string(body), resp.StatusCode)
-	}
-
-	var webhookResponse models.JiraWebhookResponse
-	if err := json.NewDecoder(resp.Body).Decode(&webhookResponse); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return &webhookResponse, nil
-}
-
-// GetWebhooks gets all webhooks registered with Jira
-func (s *JiraServiceImpl) GetWebhooks() ([]models.JiraWebhookResponse, error) {
-	url := fmt.Sprintf("%s/rest/api/2/webhook", s.config.Jira.BaseURL)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.SetBasicAuth(s.config.Jira.Username, s.config.Jira.APIToken)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.Jira.APIToken))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(req)
@@ -342,83 +299,13 @@ func (s *JiraServiceImpl) GetWebhooks() ([]models.JiraWebhookResponse, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get webhooks: %s, status code: %d", string(body), resp.StatusCode)
+		return nil, fmt.Errorf("failed to search tickets: %s, status code: %d", string(body), resp.StatusCode)
 	}
 
-	var webhooks []models.JiraWebhookResponse
-	if err := json.NewDecoder(resp.Body).Decode(&webhooks); err != nil {
+	var searchResponse models.JiraSearchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&searchResponse); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return webhooks, nil
-}
-
-// DeleteWebhook deletes a webhook from Jira
-func (s *JiraServiceImpl) DeleteWebhook(webhookID int) error {
-	url := fmt.Sprintf("%s/rest/api/2/webhook/%d", s.config.Jira.BaseURL, webhookID)
-
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.SetBasicAuth(s.config.Jira.Username, s.config.Jira.APIToken)
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to delete webhook: %s, status code: %d", string(body), resp.StatusCode)
-	}
-
-	return nil
-}
-
-// RegisterOrRefreshWebhook registers a new webhook or refreshes an existing one
-func (s *JiraServiceImpl) RegisterOrRefreshWebhook(serverURL string) error {
-	// Define the webhook configuration
-	webhook := &models.JiraWebhookRegistration{
-		Name:   "Jira AI Issue Solver",
-		URL:    fmt.Sprintf("%s/webhook/jira", serverURL),
-		Events: []string{"jira:issue_updated"},
-		Filters: map[string]interface{}{
-			"issue-related-events-section": "labels = \"good-for-ai\" AND labels != \"ai-in-progress\"",
-		},
-		Enabled: true,
-	}
-
-	// Get existing webhooks
-	existingWebhooks, err := s.GetWebhooks()
-	if err != nil {
-		return fmt.Errorf("failed to get existing webhooks: %w", err)
-	}
-
-	// Check if a webhook with the same URL already exists
-	var existingWebhook *models.JiraWebhookResponse
-	for i, wh := range existingWebhooks {
-		if wh.URL == webhook.URL {
-			existingWebhook = &existingWebhooks[i]
-			break
-		}
-	}
-
-	if existingWebhook != nil {
-		// Delete the existing webhook
-		err = s.DeleteWebhook(existingWebhook.ID)
-		if err != nil {
-			return fmt.Errorf("failed to delete existing webhook: %w", err)
-		}
-	}
-
-	// Register a new webhook
-	_, err = s.RegisterWebhook(webhook)
-	if err != nil {
-		return fmt.Errorf("failed to register webhook: %w", err)
-	}
-
-	return nil
+	return &searchResponse, nil
 }

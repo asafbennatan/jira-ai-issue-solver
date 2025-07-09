@@ -45,4 +45,4 @@ logs/
 .env
 .env.local
 .env.*.local 
-config.env
+config.yaml

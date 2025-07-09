@@ -107,33 +107,16 @@ func TestCreatePullRequest(t *testing.T) {
 				return tc.mockResponse, tc.mockError
 			})
 
-			// Create a mock GitHub App service
-			mockAppService := &MockGitHubAppService{
-				GetInstallationTokenFunc: func() (string, error) {
-					return "mock-installation-token", nil
-				},
-			}
-
 			// Create a GitHubService with the mock client
+			config := &models.Config{}
+			config.GitHub.PersonalAccessToken = "test-token"
+			config.GitHub.BotUsername = "test-bot"
+			config.GitHub.BotEmail = "test@example.com"
+
 			service := &GitHubServiceImpl{
-				config: &models.Config{
-					GitHub: struct {
-						AppID          int64  `json:"app_id" envconfig:"GITHUB_APP_ID"`
-						AppPrivateKey  string `json:"app_private_key" envconfig:"GITHUB_APP_PRIVATE_KEY"`
-						InstallationID int64  `json:"installation_id" envconfig:"GITHUB_INSTALLATION_ID"`
-						BotUsername    string `json:"bot_username" envconfig:"GITHUB_BOT_USERNAME"`
-						BotEmail       string `json:"bot_email" envconfig:"GITHUB_BOT_EMAIL"`
-					}{
-						AppID:          1531890,
-						AppPrivateKey:  "test-private-key",
-						InstallationID: 12345678,
-						BotUsername:    "test-bot",
-						BotEmail:       "test-bot@example.com",
-					},
-				},
-				client:     mockClient,
-				executor:   execCommand,
-				appService: mockAppService,
+				config:   config,
+				client:   mockClient,
+				executor: execCommand,
 			}
 
 			// Call the method being tested
@@ -222,39 +205,5 @@ func TestExtractRepoInfo(t *testing.T) {
 				t.Errorf("Expected repo %s but got %s", tc.expectedRepo, repo)
 			}
 		})
-	}
-}
-
-// TestGitHubValidateWebhookSignature tests the ValidateWebhookSignature method
-func TestGitHubValidateWebhookSignature(t *testing.T) {
-	// Create a GitHubService
-	service := &GitHubServiceImpl{
-		config: &models.Config{
-			GitHub: struct {
-				AppID          int64  `json:"app_id" envconfig:"GITHUB_APP_ID"`
-				AppPrivateKey  string `json:"app_private_key" envconfig:"GITHUB_APP_PRIVATE_KEY"`
-				InstallationID int64  `json:"installation_id" envconfig:"GITHUB_INSTALLATION_ID"`
-				BotUsername    string `json:"bot_username" envconfig:"GITHUB_BOT_USERNAME"`
-				BotEmail       string `json:"bot_email" envconfig:"GITHUB_BOT_EMAIL"`
-			}{
-				AppID:          1531890,
-				AppPrivateKey:  "test-private-key",
-				InstallationID: 12345678,
-				BotUsername:    "test-bot",
-				BotEmail:       "test-bot@example.com",
-			},
-		},
-		executor:   execCommand,
-		appService: &MockGitHubAppService{},
-	}
-
-	// Test the method
-	body := []byte(`{"test":"data"}`)
-	signature := "test-signature"
-	result := service.ValidateWebhookSignature(body, signature)
-
-	// Since the current implementation always returns true, we expect true
-	if !result {
-		t.Errorf("Expected true but got false")
 	}
 }

@@ -1,162 +1,152 @@
 # Jira AI Issue Solver
 
-The Jira AI Issue Solver is a service that automatically creates Pull Requests for Jira tickets marked with the "good-for-ai" label, and fixes PRs based on human comments.
+A Go application that automatically processes Jira tickets labeled with "good-for-ai" by using Claude CLI to generate code changes and create pull requests.
 
 ## Features
 
-- Automatically processes Jira tickets with the "good-for-ai" label
-- Uses a fork+PR workflow for better isolation and security
-  - Forks the repository to a dedicated bot account
-  - Makes changes in the fork rather than directly in the main repository
-  - Creates pull requests from the fork to the original repository
-- Uses Claude CLI to generate code changes based on the ticket description
-- Updates Jira ticket status and adds comments with links to the PR
+- **Periodic Ticket Scanning**: Automatically scans for tickets with the "good-for-ai" label at configurable intervals
+- **AI-Powered Code Generation**: Uses Claude CLI to analyze tickets and generate code changes
+- **GitHub Integration**: Creates forks, branches, and pull requests automatically
+- **Jira Integration**: Updates ticket status and adds comments with PR links
+- **Label Management**: Automatically manages labels to prevent duplicate processing
 
-## Architecture
+## How It Works
 
-The system consists of a single, long-running Go service that receives webhooks from Jira. It interacts with:
+### Periodic Scanning
 
-- Jira API: To fetch ticket details and update ticket status and labels
-- GitHub API: To create PRs and interact with repositories
-- Claude CLI: To generate code changes based on ticket descriptions
+The service runs a periodic scanner that:
 
-## Prerequisites
+1. Searches for Jira tickets with the "good-for-ai" label but without the "ai-in-progress" label
+2. Processes each ticket by adding the "ai-in-progress" label and updating status to "In Progress"
+3. Forks the repository associated with the ticket to the bot's GitHub account
+4. Clones the forked repository and creates a new branch
+5. Uses Claude CLI to generate code changes based on the ticket description and comments
+6. Commits the changes and pushes the branch to the forked repository
+7. Creates a Pull Request from the bot's fork to the original repository
+8. Adds a comment to the ticket with a link to the PR and updates the ticket status to "In Review"
 
-- Go 1.24 or later
-- Git command-line interface
+### Configuration
+
+The scanner interval can be configured using the `SCANNER_INTERVAL_SECONDS` environment variable (default: 300 seconds).
+
+## Installation
+
+### Prerequisites
+
+- Go 1.21 or later
 - Claude CLI installed and configured
-- Access to Jira and GitHub APIs
+- GitHub App with appropriate permissions
+- Jira API access
+
+### Setup
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd jira-ai-issue-solver
+```
+
+2. Install dependencies:
+```bash
+go mod download
+```
+
+3. Create a configuration file (optional) or set environment variables:
+```bash
+cp config.example.env .env
+# Edit .env with your configuration
+```
+
+4. Build the application:
+```bash
+go build -o jira-ai-solver
+```
 
 ## Configuration
 
-The application is configured using environment variables:
+The application uses a YAML configuration file. Copy `config.example.yaml` to `config.yaml` and update the values:
 
-### Server Configuration
-- `SERVER_PORT`: The port to listen on (default: 8080)
-- `SERVER_URL`: The publicly accessible URL of the server (e.g., https://your-server.com). Required for automatic Jira webhook registration.
+### Configuration File
 
-### Jira Configuration
-- `JIRA_BASE_URL`: The base URL of your Jira instance (default: https://your-domain.atlassian.net)
-- `JIRA_USERNAME`: Your Jira username
-- `JIRA_API_TOKEN`: Your Jira API token
-- `JIRA_WEBHOOK_SECRET`: The secret for validating Jira webhooks
+Create a `config.yaml` file with the following structure:
 
-### GitHub Configuration
-- `GITHUB_APP_ID`: Your GitHub App ID
-- `GITHUB_APP_PRIVATE_KEY`: Your GitHub App private key (PEM format)
-- `GITHUB_INSTALLATION_ID`: The installation ID of your GitHub App
-- `GITHUB_BOT_USERNAME`: The username that will be used for git commits (usually your organization's bot account)
-- `GITHUB_BOT_EMAIL`: The email address for git commits
+```yaml
+# Server Configuration
+server:
+  port: 8080
 
-### Claude CLI Configuration
-- `CLAUDE_CLI_PATH`: The path to the Claude CLI executable (default: claude-cli)
-- `CLAUDE_TIMEOUT`: The timeout for Claude CLI operations in seconds (default: 300)
-- `CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS`: Whether to use the `--dangerously-skip-permissions` flag (default: false)
-- `CLAUDE_ALLOWED_TOOLS`: Comma or space-separated list of tool names to allow (e.g., "Bash(git:*) Edit")
-- `CLAUDE_DISALLOWED_TOOLS`: Comma or space-separated list of tool names to deny (e.g., "Bash(git:*) Edit")
+# Jira Configuration
+jira:
+  base_url: https://your-domain.atlassian.net
+  username: your-username
+  api_token: your-jira-api-token
 
-### Temporary Directory
-- `TEMP_DIR`: The directory to use for temporary files (default: /tmp/jira-ai-issue-solver)
+# GitHub Configuration
+github:
+  personal_access_token: your-personal-access-token-here
+  bot_username: your-org-ai-bot
+  bot_email: ai-bot@your-org.com
 
-## Setup
+# Claude CLI Configuration
+claude:
+  cli_path: claude-cli
+  timeout: 300
+  dangerously_skip_permissions: true
+  allowed_tools: "Bash Edit"
+  disallowed_tools: "Python"
 
-### Jira Setup
+# Scanner Configuration
+scanner:
+  interval_seconds: 300
 
-The application can automatically register and refresh the Jira webhook on startup if the `SERVER_URL` environment variable is set. If you prefer to manually set up the webhook, follow these steps:
+# Component to Repository Mapping
+component_to_repo:
+  frontend: https://github.com/your-org/frontend.git
+  backend: https://github.com/your-org/backend.git
+  api: https://github.com/your-org/api.git
 
-1. Create a webhook in Jira with the following configuration:
-   - URL: `https://your-server/webhook/jira`
-   - Events: `issue_updated`
-   - JQL Filter: `labels = "good-for-ai" AND labels != "ai-in-progress"`
+# Temporary Directory
+temp_dir: /tmp/jira-ai-issue-solver
 
-2. Add a custom property to your Jira project:
-   - Key: `ai.bot.github.repo`
-   - Value: The URL of the GitHub repository (e.g., `https://github.com/username/repo.git`)
-
-### GitHub Setup
-
-#### 1. Create a GitHub App
-
-1. Go to your GitHub organization or user account
-2. Navigate to **Settings** → **Developer settings** → **GitHub Apps**
-3. Click **New GitHub App**
-4. Fill in the app details:
-   - **App name**: `jira-ai-issue-solver` (or your preferred name)
-   - **Homepage URL**: `https://your-server.com`
-   - **Webhook URL**: `https://your-server.com/webhook/github` (optional)
-   - **Webhook secret**: Generate a secure secret
-5. Set the following permissions:
-   - **Repository permissions**:
-     - `Contents`: Read and write
-     - `Metadata`: Read-only
-     - `Pull requests`: Read and write
-     - `Workflows`: Read and write
-   - **Organization permissions**:
-     - `Members`: Read-only (if needed)
-6. Click **Create GitHub App**
-
-#### 2. Generate Private Key
-
-1. After creating the app, go to the app's settings page
-2. Scroll down to **Private keys** section
-3. Click **Generate private key**
-4. Download the private key file (`.pem` format)
-5. **Copy the private key content** - you'll need this for the `GITHUB_APP_PRIVATE_KEY` environment variable
-
-#### 3. Install the GitHub App
-
-1. Go to your GitHub App's settings page
-2. Click **Install App**
-3. Choose the repositories or organizations where you want to install the app
-4. Note the **Installation ID** from the URL (you'll need this for `GITHUB_INSTALLATION_ID`)
-
-#### 4. Environment Variables
-
-Set these environment variables for GitHub App authentication:
-
-```bash
-# GitHub App configuration
-export GITHUB_APP_ID="1531890"
-export GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
-MIIEpAIBAAKCAQEA...
------END RSA PRIVATE KEY-----"
-export GITHUB_INSTALLATION_ID="12345678"
-
-# Git commit configuration
-export GITHUB_BOT_USERNAME="your-org-ai-bot"
-export GITHUB_BOT_EMAIL="ai-bot@your-org.com"
+# Jira Configuration
+jira_config:
+  disable_error_comments: false
 ```
 
+### Jira Configuration
 
-## Running the Application
+The `jira_config` section contains additional Jira-specific settings:
+
+- `disable_error_comments`: When set to `true`, prevents the application from adding error comments to Jira tickets when processing fails. Useful for testing or to avoid spamming tickets with error messages.
+
+### Component Mapping
+
+The application uses a component-to-repository mapping to determine which repository to use for each ticket:
+
+```yaml
+component_to_repo:
+  frontend: https://github.com/your-org/frontend.git
+  backend: https://github.com/your-org/backend.git
+  api: https://github.com/your-org/api.git
+```
+
+The application will:
+1. Look at the first component assigned to a Jira ticket
+2. Use the component name to find the corresponding repository URL
+3. Process the ticket using that repository
+
+### Running the Application
 
 ```bash
-# Set environment variables
-export JIRA_BASE_URL="https://your-domain.atlassian.net"
-export JIRA_USERNAME="your-username"
-export JIRA_API_TOKEN="your-api-token"
-export SERVER_URL="https://your-server.com"  # Required for automatic Jira webhook registration
-
-# GitHub App configuration
-export GITHUB_APP_ID="1531890"
-export GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
-MIIEpAIBAAKCAQEA...
------END RSA PRIVATE KEY-----"
-export GITHUB_INSTALLATION_ID="12345678"
-export GITHUB_BOT_USERNAME="your-org-ai-bot"
-export GITHUB_BOT_EMAIL="ai-bot@your-org.com"
-
-# Claude CLI configuration
-export CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=true  # Use with caution
-export CLAUDE_ALLOWED_TOOLS="Bash Edit"  # Optional: Comma or space-separated list of allowed tools
-export CLAUDE_DISALLOWED_TOOLS="Python"  # Optional: Comma or space-separated list of disallowed tools
-
-# Run the application
+# Run with default config.yaml
 go run main.go
 
-# Or build and run
+# Run with custom config file
+go run main.go -config /path/to/config.yaml
+
+# Build and run
 go build -o jira-ai-solver
-./jira-ai-solver
+./jira-ai-solver -config config.yaml
 ```
 
 ## Testing
@@ -175,54 +165,54 @@ go test ./handlers
 go test ./services
 ```
 
-## How It Works
+## Usage
 
-### Webhook Registration
+### Setting Up Jira Tickets
 
-On startup, if the `SERVER_URL` environment variable is set, the service will automatically register or refresh the Jira webhook:
+To have a ticket processed by the AI:
 
-1. The service checks for existing webhooks in Jira.
-2. If a webhook with the same URL already exists, it is deleted.
-3. A new webhook is registered with the appropriate configuration (events, JQL filter, etc.).
-4. This ensures that the webhook is always up-to-date and properly configured.
+1. Add the "good-for-ai" label to the ticket
+2. Ensure the ticket's project has the "ai.bot.github.repo" property set to the repository URL
+3. The scanner will automatically pick up the ticket and process it
 
-### Processing New Tickets
+### Ticket Processing Flow
 
-1. When a ticket is updated with the "good-for-ai" label, Jira sends a webhook to the service.
-2. The service adds the "ai-in-progress" label to the ticket and updates its status to "In Progress".
-3. The service forks the repository associated with the ticket to the bot's GitHub account.
-4. The service clones the forked repository.
-5. The service creates a new branch with the format `feature/<JIRA-KEY>-<summary>`.
-6. The service generates a prompt for Claude CLI based on the ticket description and comments.
-7. Claude CLI generates code changes based on the prompt.
-8. The service commits the changes and pushes the branch to the forked repository.
-9. The service creates a Pull Request from the bot's fork to the original repository.
-10. The service adds a comment to the ticket with a link to the PR and updates the ticket status to "In Review".
+1. **Scanning**: The scanner periodically searches for tickets with "good-for-ai" label
+2. **Processing**: When found, the ticket is marked with "ai-in-progress" label
+3. **Code Generation**: Claude CLI analyzes the ticket and generates code changes
+4. **Pull Request**: A PR is created with the changes
+5. **Completion**: The ticket is updated with "ai-pr-created" label and status changed to "In Review"
 
-## Labels
+### Labels Used
 
-The service uses the following labels to track the status of tickets:
+- `good-for-ai`: Marks tickets for AI processing
+- `ai-in-progress`: Prevents duplicate processing
+- `ai-pr-created`: Indicates a PR has been created
+- `ai-failed`: Indicates processing failed
 
-- `good-for-ai`: Indicates that the ticket should be processed by the AI.
-- `ai-in-progress`: Indicates that the AI is currently processing the ticket.
-- `ai-pr-created`: Indicates that the AI has created a PR for the ticket.
-- `ai-failed`: Indicates that the AI failed to process the ticket.
+### Status Transitions
 
+- **Open** → **In Progress** (when processing starts)
+- **In Progress** → **In Review** (when PR is created)
+- **In Progress** → **Open** (if processing fails)
 
-## Limitations
+## Architecture
 
-- The service does not handle merge conflicts.
-- The service does not handle complex code changes that require deep understanding of the codebase.
-- The service does not handle tickets that require changes to multiple repositories.
-- The service does not handle PR review feedback or change requests (this will be handled by a separate complementary project).
+The application is built with a clean architecture pattern:
 
-## Future Enhancements
+- **Services**: Handle external API interactions (Jira, GitHub, Claude CLI)
+- **Handlers**: Process incoming requests and coordinate between services
+- **Models**: Define data structures and configuration
+- **Scanner**: Periodically searches for and processes tickets
 
-A complementary project is planned to handle GitHub webhook events for pull request reviews and change requests. This separate service will:
+## Contributing
 
-- Process PR review comments and feedback
-- Automatically make requested changes to existing PRs
-- Handle iterative improvements based on human feedback
-- Maintain the same fork+PR workflow for consistency
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
 
-This separation allows for better modularity and focused responsibility between initial ticket processing and ongoing PR refinement.
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

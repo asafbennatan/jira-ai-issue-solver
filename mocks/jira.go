@@ -6,15 +6,11 @@ import (
 
 // MockJiraService is a mock implementation of the JiraService interface
 type MockJiraService struct {
-	GetTicketFunc                func(key string) (*models.JiraTicketResponse, error)
-	UpdateTicketLabelsFunc       func(key string, addLabels, removeLabels []string) error
-	UpdateTicketStatusFunc       func(key string, status string) error
-	AddCommentFunc               func(key string, comment string) error
-	ValidateWebhookSignatureFunc func(body []byte, signature string) bool
-	RegisterWebhookFunc          func(webhook *models.JiraWebhookRegistration) (*models.JiraWebhookResponse, error)
-	GetWebhooksFunc              func() ([]models.JiraWebhookResponse, error)
-	DeleteWebhookFunc            func(webhookID int) error
-	RegisterOrRefreshWebhookFunc func(serverURL string) error
+	GetTicketFunc          func(key string) (*models.JiraTicketResponse, error)
+	UpdateTicketLabelsFunc func(key string, addLabels, removeLabels []string) error
+	UpdateTicketStatusFunc func(key string, status string) error
+	AddCommentFunc         func(key string, comment string) error
+	SearchTicketsFunc      func(jql string) (*models.JiraSearchResponse, error)
 }
 
 // GetTicket is the mock implementation of JiraService's GetTicket method
@@ -49,42 +45,10 @@ func (m *MockJiraService) AddComment(key string, comment string) error {
 	return nil
 }
 
-// ValidateWebhookSignature is the mock implementation of JiraService's ValidateWebhookSignature method
-func (m *MockJiraService) ValidateWebhookSignature(body []byte, signature string) bool {
-	if m.ValidateWebhookSignatureFunc != nil {
-		return m.ValidateWebhookSignatureFunc(body, signature)
-	}
-	return true
-}
-
-// RegisterWebhook is the mock implementation of JiraService's RegisterWebhook method
-func (m *MockJiraService) RegisterWebhook(webhook *models.JiraWebhookRegistration) (*models.JiraWebhookResponse, error) {
-	if m.RegisterWebhookFunc != nil {
-		return m.RegisterWebhookFunc(webhook)
+// SearchTickets is the mock implementation of JiraService's SearchTickets method
+func (m *MockJiraService) SearchTickets(jql string) (*models.JiraSearchResponse, error) {
+	if m.SearchTicketsFunc != nil {
+		return m.SearchTicketsFunc(jql)
 	}
 	return nil, nil
-}
-
-// GetWebhooks is the mock implementation of JiraService's GetWebhooks method
-func (m *MockJiraService) GetWebhooks() ([]models.JiraWebhookResponse, error) {
-	if m.GetWebhooksFunc != nil {
-		return m.GetWebhooksFunc()
-	}
-	return nil, nil
-}
-
-// DeleteWebhook is the mock implementation of JiraService's DeleteWebhook method
-func (m *MockJiraService) DeleteWebhook(webhookID int) error {
-	if m.DeleteWebhookFunc != nil {
-		return m.DeleteWebhookFunc(webhookID)
-	}
-	return nil
-}
-
-// RegisterOrRefreshWebhook is the mock implementation of JiraService's RegisterOrRefreshWebhook method
-func (m *MockJiraService) RegisterOrRefreshWebhook(serverURL string) error {
-	if m.RegisterOrRefreshWebhookFunc != nil {
-		return m.RegisterOrRefreshWebhookFunc(serverURL)
-	}
-	return nil
 }

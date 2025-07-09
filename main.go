@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -12,84 +11,69 @@ import (
 	"syscall"
 	"time"
 
-	"jira-ai-issue-solver/handlers"
 	"jira-ai-issue-solver/models"
 	"jira-ai-issue-solver/services"
-
-	"github.com/joho/godotenv"
-	"github.com/kelseyhightower/envconfig"
 )
 
-// loadConfig loads the configuration from environment variables
-func loadConfig() *models.Config {
-	config := &models.Config{}
-
-	// Process environment variables using envconfig
-	err := envconfig.Process("", config)
-	if err != nil {
-		log.Fatalf("Failed to process config: %v", err)
-	}
-
-	return config
-}
-
-// loadConfigFromFile loads the configuration from a file using godotenv
-func loadConfigFromFile(configFile string) *models.Config {
-	// Load environment variables from file using godotenv
-	err := godotenv.Load(configFile)
-	if err != nil {
-		log.Fatalf("Failed to load config file %s: %v", configFile, err)
-	}
-
-	// Now load config from environment variables (which now include the file values)
-	return loadConfig()
-}
-
 func main() {
-	// Parse command-line flags
-	configFile := flag.String("config", "", "Path to config file")
+	// Parse command line flags
+	configPath := flag.String("config", "config.yaml", "Path to configuration file")
 	flag.Parse()
 
 	// Load configuration
-	var config *models.Config
+	config, err := models.LoadConfig(*configPath)
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
 
-	if *configFile != "" {
-		// Load from file if provided
-		log.Printf("Loading configuration from file: %s", *configFile)
-		config = loadConfigFromFile(*configFile)
-	} else {
-		// Load from environment variables
-		log.Println("Loading configuration from environment variables")
-		config = loadConfig()
+	// Validate required configuration
+	if config.Jira.BaseURL == "" {
+		log.Fatal("JIRA_BASE_URL is required")
+	}
+	if config.Jira.Username == "" {
+		log.Fatal("JIRA_USERNAME is required")
+	}
+	if config.Jira.APIToken == "" {
+		log.Fatal("JIRA_API_TOKEN is required")
+	}
+	if config.GitHub.PersonalAccessToken == "" {
+		log.Fatal("GITHUB_PERSONAL_ACCESS_TOKEN is required")
+	}
+	if config.GitHub.BotUsername == "" {
+		log.Fatal("GITHUB_BOT_USERNAME is required")
+	}
+	if config.GitHub.BotEmail == "" {
+		log.Fatal("GITHUB_BOT_EMAIL is required")
+	}
+	if len(config.ComponentToRepo) == 0 {
+		log.Fatal("At least one component_to_repo mapping is required")
 	}
 
 	// Create services
 	jiraService := services.NewJiraService(config)
 	githubService := services.NewGitHubService(config)
-	claudeService := services.NewClaudeService(config)
 
-	// Register or refresh Jira webhook
-	if config.Server.URL == "" {
-		log.Println("SERVER_URL environment variable not set, skipping Jira webhook registration")
-	} else {
-		log.Println("Registering Jira webhook...")
-		err := jiraService.RegisterOrRefreshWebhook(config.Server.URL)
-		if err != nil {
-			log.Printf("Failed to register Jira webhook: %v", err)
-		} else {
-			log.Println("Successfully registered Jira webhook")
-		}
+	// Create AI service based on provider selection
+	var aiService services.AIService
+	switch config.AIProvider {
+	case "claude":
+		aiService = services.NewClaudeService(config)
+		log.Printf("Using Claude AI service")
+	case "gemini":
+		aiService = services.NewGeminiService(config)
+		log.Printf("Using Gemini AI service")
+	default:
+		log.Fatalf("Unsupported AI provider: %s", config.AIProvider)
 	}
 
-	// Create handlers
-	jiraHandler := handlers.NewJiraWebhookHandler(jiraService, githubService, claudeService, config)
+	jiraIssueScannerService := services.NewJiraIssueScannerService(jiraService, githubService, aiService, config)
 
-	// Start janitor process
-	jiraHandler.StartJanitor()
+	// Start the Jira issue scanner service for periodic ticket scanning
+	log.Println("Starting Jira issue scanner service...")
+	jiraIssueScannerService.Start()
 
-	// Create HTTP server
+	// Create HTTP server (simplified for health checks only)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/webhook/jira", jiraHandler.HandleWebhook)
 
 	// Add a health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -106,11 +90,11 @@ func main() {
 		Handler: mux,
 	}
 
-	// Start server in a goroutine
+	// Start the server in a goroutine
 	go func() {
 		log.Printf("Starting server on port %d", config.Server.Port)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("Failed to start server: %v", err)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server error: %v", err)
 		}
 	}()
 
@@ -118,6 +102,10 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
+
+	// Gracefully shutdown the scanner service
+	log.Println("Shutting down scanner service...")
+	jiraIssueScannerService.Stop()
 
 	// Gracefully shutdown the server
 	log.Println("Shutting down server...")

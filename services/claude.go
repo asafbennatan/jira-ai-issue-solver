@@ -1,9 +1,11 @@
 package services
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,10 +15,41 @@ import (
 	"jira-ai-issue-solver/models"
 )
 
+// getContentAsString safely converts content to string, handling both string and array types
+func getContentAsString(content interface{}) string {
+	if content == nil {
+		return ""
+	}
+
+	switch v := content.(type) {
+	case string:
+		return v
+	case []interface{}:
+		// Handle array of content objects
+		var result strings.Builder
+		for i, item := range v {
+			if i > 0 {
+				result.WriteString(", ")
+			}
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				if text, exists := itemMap["text"]; exists {
+					if textStr, ok := text.(string); ok {
+						result.WriteString(textStr)
+					}
+				}
+			}
+		}
+		return result.String()
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
 // ClaudeService defines the interface for interacting with Claude CLI
 type ClaudeService interface {
-	// GenerateCode generates code using Claude CLI
-	GenerateCode(prompt string, repoDir string) (*ClaudeResponse, error)
+	AIService
+	// GenerateCodeClaude generates code using Claude CLI and returns ClaudeResponse
+	GenerateCodeClaude(prompt string, repoDir string) (*ClaudeResponse, error)
 }
 
 // ClaudeServiceImpl implements the ClaudeService interface
@@ -47,67 +80,300 @@ type ClaudeUsage struct {
 	ServiceTier              string         `json:"service_tier"`
 }
 
-// ClaudeResponse represents the JSON response from Claude CLI
-type ClaudeResponse struct {
-	Type          string      `json:"type"`
-	Subtype       string      `json:"subtype"`
-	IsError       bool        `json:"is_error"`
-	DurationMs    int         `json:"duration_ms"`
-	DurationApiMs int         `json:"duration_api_ms"`
-	NumTurns      int         `json:"num_turns"`
-	Result        string      `json:"result"`
-	SessionID     string      `json:"session_id"`
-	TotalCostUsd  float64     `json:"total_cost_usd"`
-	Usage         ClaudeUsage `json:"usage"`
+// ClaudeMessage represents the nested message structure
+type ClaudeContent struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+	// Tool use fields
+	ID    string `json:"id,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Input struct {
+		Pattern string `json:"pattern,omitempty"`
+		File    string `json:"file,omitempty"`
+	} `json:"input,omitempty"`
+	// Tool result fields
+	ToolUseID string      `json:"tool_use_id,omitempty"`
+	Content   interface{} `json:"content,omitempty"` // Can be string or array
 }
 
-// GenerateCode generates code using Claude CLI
-func (s *ClaudeServiceImpl) GenerateCode(prompt string, repoDir string) (*ClaudeResponse, error) {
-	// Build command arguments based on configuration
-	args := []string{"--output-format", "json", "-p", prompt}
+type ClaudeMessage struct {
+	ID              string          `json:"id"`
+	Type            string          `json:"type"`
+	Role            string          `json:"role"`
+	Model           string          `json:"model"`
+	Content         []ClaudeContent `json:"content"`
+	StopReason      *string         `json:"stop_reason"`
+	StopSequence    *string         `json:"stop_sequence"`
+	Usage           ClaudeUsage     `json:"usage"`
+	ParentToolUseID *string         `json:"parent_tool_use_id"`
+	SessionID       string          `json:"session_id"`
+}
 
-	// Add dangerously-skip-permissions flag if configured
+// ClaudeResponse represents the JSON response from Claude CLI
+type ClaudeResponse struct {
+	Type          string         `json:"type"`
+	Subtype       string         `json:"subtype"`
+	IsError       bool           `json:"is_error"`
+	DurationMs    int            `json:"duration_ms"`
+	DurationApiMs int            `json:"duration_api_ms"`
+	NumTurns      int            `json:"num_turns"`
+	Result        string         `json:"result"`
+	SessionID     string         `json:"session_id"`
+	TotalCostUsd  float64        `json:"total_cost_usd"`
+	Usage         ClaudeUsage    `json:"usage"`
+	Message       *ClaudeMessage `json:"message"`
+}
+
+// GenerateCode implements the AIService interface
+func (s *ClaudeServiceImpl) GenerateCode(prompt string, repoDir string) (interface{}, error) {
+	return s.GenerateCodeClaude(prompt, repoDir)
+}
+
+// GenerateDocumentation implements the AIService interface
+func (s *ClaudeServiceImpl) GenerateDocumentation(repoDir string) error {
+	// Check if CLAUDE.md already exists
+	claudePath := filepath.Join(repoDir, "CLAUDE.md")
+	if _, err := os.Stat(claudePath); err == nil {
+		log.Printf("CLAUDE.md already exists, skipping generation")
+		return nil
+	}
+
+	log.Printf("CLAUDE.md not found, generating documentation...")
+
+	// Create prompt for generating CLAUDE.md
+	prompt := `Create a comprehensive CLAUDE.md file that serves as an index and guide to all markdown documentation in this repository.
+
+## Requirements:
+1. **File Structure**: Create a well-organized document with clear sections and subsections
+2. **File Index**: List all markdown files found in the repository (including nested folders) with:
+   - Proper headlines for each file
+   - Brief descriptions of what each file contains
+   - Links to the actual files rather than copying their content
+3. **Organization**: Group files logically (e.g., by directory, by purpose)
+4. **Navigation**: Include a table of contents at the top
+5. **Context**: Provide context about how the files relate to each other
+
+## Format:
+- Use clear, descriptive headlines for each file entry
+- Include a brief description (1-2 sentences) explaining what each file covers
+- Use relative links to the actual markdown files
+- Organize files in a logical structure
+- Make it easy for users to find relevant documentation
+
+## Example structure:
+# CLAUDE.md
+
+## Table of Contents
+- [Getting Started](#getting-started)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+
+## Getting Started
+- [README.md](./README.md) - Main project overview and setup instructions
+- [INSTALL.md](./docs/INSTALL.md) - Detailed installation guide
+
+## Documentation
+- [API.md](./docs/API.md) - API reference and usage examples
+- [ARCHITECTURE.md](./docs/ARCHITECTURE.md) - System architecture overview
+
+## Contributing
+- [CONTRIBUTING.md](./CONTRIBUTING.md) - Guidelines for contributors
+- [STYLE.md](./docs/STYLE.md) - Code style and formatting guidelines
+
+Search the entire repository for all .md files and create a comprehensive index following this structure.`
+
+	// Generate the documentation using Claude
+	_, err := s.GenerateCodeClaude(prompt, repoDir)
+	if err != nil {
+		return fmt.Errorf("failed to generate CLAUDE.md: %w", err)
+	}
+
+	// After running the CLI, check if CLAUDE.md exists. If not, return an error.
+	if _, err := os.Stat(claudePath); os.IsNotExist(err) {
+		return fmt.Errorf("CLAUDE.md was not created by Claude CLI")
+	}
+
+	log.Printf("Successfully generated CLAUDE.md")
+	return nil
+}
+
+// GenerateCodeClaude generates code using Claude CLI
+func (s *ClaudeServiceImpl) GenerateCodeClaude(prompt string, repoDir string) (*ClaudeResponse, error) {
+	// Build command arguments based on configuration
+	log.Printf("repoDir: %s", repoDir)
+	log.Printf("Generating code with prompt: %s", prompt)
+	args := []string{"--output-format", "stream-json", "--verbose", "-p", prompt}
+
+	// Add dangerous permissions flag if configured
 	if s.config.Claude.DangerouslySkipPermissions {
 		args = append([]string{"--dangerously-skip-permissions"}, args...)
 	}
 
-	// Add allowedTools if configured
+	// Add allowed tools if configured
 	if s.config.Claude.AllowedTools != "" {
 		args = append([]string{"--allowedTools", s.config.Claude.AllowedTools}, args...)
 	}
 
-	// Add disallowedTools if configured
+	// Add disallowed tools if configured
 	if s.config.Claude.DisallowedTools != "" {
 		args = append([]string{"--disallowedTools", s.config.Claude.DisallowedTools}, args...)
 	}
 
 	// Prepare the command with the built arguments
-	cmd := s.executor(s.config.Claude.Path, args...)
+	cmd := s.executor(s.config.Claude.CLIPath, args...)
 	cmd.Dir = repoDir
+
+	// Print the actual command being executed
+	log.Printf("=== Executing Claude CLI ===")
+	log.Printf("Command: %s %s", s.config.Claude.CLIPath, strings.Join(args, " "))
+	log.Printf("Directory: %s", repoDir)
+	log.Printf("===========================")
 
 	// Set environment variables
 	cmd.Env = os.Environ()
 
-	// Create buffers for stdout and stderr
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Create pipes for stdout and stderr to read in real-time
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stderr pipe: %w", err)
+	}
 
 	// Set timeout
 	timeout := time.Duration(s.config.Claude.Timeout) * time.Second
 
-	// Create a channel to signal command completion
-	done := make(chan error, 1)
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start Claude CLI: %w", err)
+	}
 
-	// Run the command in a goroutine
+	// Create channels for communication
+	done := make(chan error, 1)
+	resultChan := make(chan *ClaudeResponse, 1)
+	errorChan := make(chan error, 1)
+
+	// Read stderr in a goroutine
 	go func() {
-		err := cmd.Run()
-		if err != nil {
-			done <- fmt.Errorf("failed to run Claude CLI: %w, stderr: %s", err, stderr.String())
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			log.Printf("=== Claude stderr ===\n%s\n===================", scanner.Text())
+		}
+	}()
+
+	// Wait for command completion in a goroutine
+	go func() {
+		err := cmd.Wait()
+		done <- err
+	}()
+
+	// Read stdout and process stream-json in a goroutine
+	go func() {
+		log.Printf("Starting to read Claude stream-json output...")
+		var finalResponse *ClaudeResponse
+		scanner := bufio.NewScanner(stdoutPipe)
+
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+
+			var response ClaudeResponse
+			if err := json.Unmarshal([]byte(line), &response); err != nil {
+				log.Printf("Failed to parse JSON line: %s, error: %v", line, err)
+				continue
+			}
+
+			// Log each message for debugging with type and content
+			log.Printf("=== Claude Message ===")
+			log.Printf("Type: %s", response.Type)
+			log.Printf("Subtype: %s", response.Subtype)
+
+			// Extract content from nested message structure
+			var content string
+			if response.Message != nil {
+				if response.Message.SessionID != "" {
+					log.Printf("Session ID: %s", response.Message.SessionID)
+				}
+				if response.Message.Role != "" {
+					log.Printf("Role: %s", response.Message.Role)
+				}
+				if response.Message.Model != "" {
+					log.Printf("Model: %s", response.Message.Model)
+				}
+				if len(response.Message.Content) > 0 {
+					for i, contentItem := range response.Message.Content {
+						switch contentItem.Type {
+						case "text":
+							content = contentItem.Text
+							log.Printf("Content [%d] (text): %s", i, contentItem.Text)
+						case "tool_use":
+							log.Printf("Content [%d] (tool_use): ID=%s, Name=%s, Input=%+v", i, contentItem.ID, contentItem.Name, contentItem.Input)
+						case "tool_result":
+							log.Printf("Content [%d] (tool_result): ToolUseID=%s, Content=%s", i, contentItem.ToolUseID, getContentAsString(contentItem.Content))
+						default:
+							log.Printf("Content [%d] (%s): %+v", i, contentItem.Type, contentItem)
+						}
+					}
+				}
+			} else if response.SessionID != "" {
+				log.Printf("Session ID: %s", response.SessionID)
+			}
+
+			// Fallback to Result field if no nested message
+			if content == "" && response.Result != "" {
+				log.Printf("Content (Result): %s", response.Result)
+			}
+
+			if response.IsError {
+				log.Printf("ERROR: %s", response.Result)
+			}
+			log.Printf("=====================")
+
+			// Check if there was an error
+			if response.IsError {
+				errorChan <- fmt.Errorf("claude CLI returned an error: %s", response.Result)
+				return
+			}
+
+			// For stream-json, we want to capture the final response
+			// The final response typically has the complete result
+			if response.Type == "assistant" && response.Message != nil {
+				// Print all content items for every assistant message
+				for i, contentItem := range response.Message.Content {
+					switch contentItem.Type {
+					case "text":
+						log.Printf("Assistant content [%d] (text): %s", i, contentItem.Text)
+					case "tool_use":
+						log.Printf("Assistant content [%d] (tool_use): ID=%s, Name=%s, Input=%+v", i, contentItem.ID, contentItem.Name, contentItem.Input)
+					case "tool_result":
+						log.Printf("Assistant content [%d] (tool_result): ToolUseID=%s, Content=%s", i, contentItem.ToolUseID, getContentAsString(contentItem.Content))
+					default:
+						log.Printf("Assistant content [%d] (%s): %+v", i, contentItem.Type, contentItem)
+					}
+				}
+				// Always update finalResponse to the latest assistant message
+				finalResponse = &response
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			errorChan <- fmt.Errorf("error reading stream-json output: %w", err)
 			return
 		}
 
-		done <- nil
+		if finalResponse == nil {
+			errorChan <- fmt.Errorf("no valid response found in stream-json output")
+			return
+		}
+
+		log.Printf("Capturing final assistant response...")
+		log.Printf("Stream processing complete. Final response captured.")
+		resultChan <- finalResponse
 	}()
 
 	// Wait for the command to complete or timeout
@@ -124,18 +390,15 @@ func (s *ClaudeServiceImpl) GenerateCode(prompt string, repoDir string) (*Claude
 		return nil, fmt.Errorf("claude CLI timed out after %d seconds", s.config.Claude.Timeout)
 	}
 
-	// Parse the JSON response
-	var response ClaudeResponse
-	if err := json.Unmarshal(stdout.Bytes(), &response); err != nil {
-		return nil, fmt.Errorf("failed to parse Claude CLI response: %w, stdout: %s", err, stdout.String())
+	// Wait for the result or error from the streaming goroutine
+	select {
+	case result := <-resultChan:
+		return result, nil
+	case err := <-errorChan:
+		return nil, err
+	case <-time.After(5 * time.Second): // Additional timeout for result processing
+		return nil, fmt.Errorf("timeout waiting for stream processing result")
 	}
-
-	// Check if there was an error
-	if response.IsError {
-		return nil, fmt.Errorf("claude CLI returned an error: %s", response.Result)
-	}
-
-	return &response, nil
 }
 
 // PreparePrompt prepares a prompt for Claude CLI based on the Jira ticket
@@ -158,11 +421,16 @@ func PreparePrompt(ticket *models.JiraTicketResponse) string {
 	}
 
 	sb.WriteString("# Instructions\n\n")
-	sb.WriteString("1. Analyze the task description and comments.\n")
-	sb.WriteString("2. Implement the necessary changes to fulfill the requirements.\n")
-	sb.WriteString("3. Write tests for the implemented functionality if appropriate.\n")
-	sb.WriteString("4. Update documentation if necessary.\n")
-	sb.WriteString("5. Provide a summary of the changes made.\n\n")
+	sb.WriteString("1. First, examine any relevant *.md files (README.md, CONTRIBUTING.md, etc.) in the repository (these might be nested so search the entire repo!) to understand the project structure, testing conventions, and how to run tests.\n")
+	sb.WriteString("2. Analyze the task description and comments.\n")
+	sb.WriteString("3. Implement the necessary changes to fulfill the requirements.\n")
+	sb.WriteString("4. Write tests for the implemented functionality if appropriate.\n")
+	sb.WriteString("5. Update documentation if necessary.\n")
+	sb.WriteString("6. Make sure the project builds successfully before running tests.\n")
+	sb.WriteString("7. Review the markdown files (README.md, CONTRIBUTING.md, etc.) to understand how tests should be run for this project. These files might be nested inside directories, so search the entire repository structure.\n")
+	sb.WriteString("8. Verify your changes by running the relevant tests to ensure they work correctly.\n")
+	sb.WriteString("9. Provide a summary of the changes made.\n")
+	sb.WriteString("10. IMPORTANT: Do NOT perform any git operations (commit, push, pull, etc.). Git handling is managed by the system.\n\n")
 
 	sb.WriteString("# Output Format\n\n")
 	sb.WriteString("Please provide your response in the following format:\n\n")
@@ -212,7 +480,11 @@ func PreparePromptForPRFeedback(pr *models.GitHubPullRequest, review *models.Git
 	sb.WriteString("2. Implement the necessary changes to address the feedback.\n")
 	sb.WriteString("3. Update tests if necessary.\n")
 	sb.WriteString("4. Update documentation if necessary.\n")
-	sb.WriteString("5. Provide a summary of the changes made.\n\n")
+	sb.WriteString("5. Make sure the project builds successfully before running tests.\n")
+	sb.WriteString("6. Review the markdown files (README.md, CONTRIBUTING.md, etc.) to understand how tests should be run for this project. These files might be nested inside directories, so search the entire repository structure.\n")
+	sb.WriteString("7. Verify your changes by running the relevant tests to ensure they work correctly.\n")
+	sb.WriteString("8. Provide a summary of the changes made.\n")
+	sb.WriteString("9. IMPORTANT: Do NOT perform any git operations (commit, push, pull, etc.). Git handling is managed by the system.\n\n")
 
 	sb.WriteString("# Output Format\n\n")
 	sb.WriteString("Please provide your response in the following format:\n\n")

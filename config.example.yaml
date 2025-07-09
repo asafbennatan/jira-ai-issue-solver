@@ -1,0 +1,47 @@
+# Server Configuration
+server:
+  port: 8080
+
+# Jira Configuration
+jira:
+  base_url: https://your-domain.atlassian.net
+  username: your-username
+  api_token: your-jira-api-token
+  interval_seconds: 300
+  disable_error_comments: false
+
+# GitHub Configuration
+github:
+  personal_access_token: your-personal-access-token-here
+  bot_username: your-org-ai-bot
+  bot_email: ai-bot@your-org.com
+
+# AI Provider Selection (choose one: "claude" or "gemini")
+ai_provider: claude
+
+# Claude CLI Configuration (used when ai_provider: claude)
+claude:
+  cli_path: claude
+  timeout: 300
+  dangerously_skip_permissions: true
+  allowed_tools: "Bash Edit"
+  disallowed_tools: "Python"
+
+# Gemini CLI Configuration (used when ai_provider: gemini)
+gemini:
+  cli_path: gemini
+  timeout: 300
+  model: "gemini-2.5-pro"
+  all_files: false
+  sandbox: false
+  api_key: "your-gemini-api-key-here"
+
+# Component to Repository Mapping
+component_to_repo:
+  frontend: https://github.com/your-org/frontend.git
+  backend: https://github.com/your-org/backend.git
+  api: https://github.com/your-org/api.git
+  mobile: https://github.com/your-org/mobile.git
+
+# Temporary Directory
+temp_dir: /tmp/jira-ai-issue-solver 

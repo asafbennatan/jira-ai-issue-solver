@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -31,9 +32,6 @@ type GitHubService interface {
 	// CreatePullRequest creates a pull request
 	CreatePullRequest(owner, repo, title, body, head, base string) (*models.GitHubCreatePRResponse, error)
 
-	// ValidateWebhookSignature validates the signature of a webhook
-	ValidateWebhookSignature(body []byte, signature string) bool
-
 	// ForkRepository forks a repository and returns the clone URL of the fork
 	ForkRepository(owner, repo string) (string, error)
 
@@ -49,10 +47,9 @@ type GitHubService interface {
 
 // GitHubServiceImpl implements the GitHubService interface
 type GitHubServiceImpl struct {
-	config     *models.Config
-	client     *http.Client
-	executor   models.CommandExecutor
-	appService GitHubAppService
+	config   *models.Config
+	client   *http.Client
+	executor models.CommandExecutor
 }
 
 // NewGitHubService creates a new GitHubService
@@ -62,14 +59,10 @@ func NewGitHubService(config *models.Config, executor ...models.CommandExecutor)
 		commandExecutor = executor[0]
 	}
 
-	// Create GitHub App service
-	appService := NewGitHubAppService(config)
-
 	return &GitHubServiceImpl{
-		config:     config,
-		client:     &http.Client{},
-		executor:   commandExecutor,
-		appService: appService,
+		config:   config,
+		client:   &http.Client{},
+		executor: commandExecutor,
 	}
 }
 
@@ -82,32 +75,61 @@ func (s *GitHubServiceImpl) CloneRepository(repoURL, directory string) error {
 
 	// Check if the directory is already a git repository
 	if _, err := os.Stat(filepath.Join(directory, ".git")); err == nil {
-		// Directory is already a git repository, pull the latest changes
-		cmd := s.executor("git", "pull")
+		// Directory is already a git repository, fetch the latest changes
+		cmd := s.executor("git", "fetch", "origin")
 		cmd.Dir = directory
 
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to pull repository: %w, stderr: %s", err, stderr.String())
+			return fmt.Errorf("failed to fetch repository: %w, stderr: %s", err, stderr.String())
 		}
 
-		return nil
-	}
+		// Reset to origin/main or origin/master to ensure we're up to date
+		cmd = s.executor("git", "reset", "--hard", "origin/main")
+		cmd.Dir = directory
 
-	// Clone the repository
-	cmd := s.executor("git", "clone", repoURL, directory)
+		stderr.Reset()
+		cmd.Stderr = &stderr
 
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			// Try with master branch
+			cmd = s.executor("git", "reset", "--hard", "origin/master")
+			cmd.Dir = directory
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to clone repository: %w, stderr: %s", err, stderr.String())
+			stderr.Reset()
+			cmd.Stderr = &stderr
+
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("failed to reset to origin/main or origin/master: %w, stderr: %s", err, stderr.String())
+			}
+		}
+
+		// Clean the repository
+		cmd = s.executor("git", "clean", "-fdx")
+		cmd.Dir = directory
+
+		stderr.Reset()
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to clean repository: %w, stderr: %s", err, stderr.String())
+		}
+	} else {
+		// Clone the repository
+		cmd := s.executor("git", "clone", repoURL, directory)
+
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to clone repository: %w, stderr: %s", err, stderr.String())
+		}
 	}
 
 	// Configure git user for GitHub App
-	cmd = s.executor("git", "config", "user.name", s.config.GitHub.BotUsername)
+	cmd := s.executor("git", "config", "user.name", s.config.GitHub.BotUsername)
 	cmd.Dir = directory
 
 	if err := cmd.Run(); err != nil {
@@ -121,15 +143,46 @@ func (s *GitHubServiceImpl) CloneRepository(repoURL, directory string) error {
 		return fmt.Errorf("failed to configure git user email: %w", err)
 	}
 
+	// Configure git to use the GitHub token for authentication
+	// This prevents credential prompts during push operations
+	cmd = s.executor("git", "config", "credential.helper", "store")
+	cmd.Dir = directory
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to configure git credential helper: %w", err)
+	}
+
+	// Set up the credential URL with token
+	token, err := s.getAuthToken()
+	if err != nil {
+		return fmt.Errorf("failed to get auth token: %w", err)
+	}
+
+	// Configure the remote URL to include the token
+	// Extract owner and repo from the URL
+	owner, repo, err := ExtractRepoInfo(repoURL)
+	if err != nil {
+		return fmt.Errorf("failed to extract repo info: %w", err)
+	}
+
+	// Set the remote URL with embedded token
+	authURL := fmt.Sprintf("https://%s@github.com/%s/%s.git", token, owner, repo)
+	cmd = s.executor("git", "remote", "set-url", "origin", authURL)
+	cmd.Dir = directory
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to set remote URL with token: %w", err)
+	}
+
 	return nil
 }
 
-// getAuthToken returns the GitHub App installation token for API calls
+// getAuthToken returns the GitHub Personal Access Token for API calls
 func (s *GitHubServiceImpl) getAuthToken() (string, error) {
-	if s.appService == nil {
-		return "", fmt.Errorf("GitHub App service not configured")
+	if s.config.GitHub.PersonalAccessToken == "" {
+		return "", fmt.Errorf("Personal Access Token not configured")
 	}
-	return s.appService.GetInstallationToken()
+	return s.config.GitHub.PersonalAccessToken, nil
 }
 
 // CreateBranch creates a new branch in a local repository based on the latest origin/main
@@ -182,6 +235,24 @@ func (s *GitHubServiceImpl) CreateBranch(directory, branchName string) error {
 
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to reset to origin/main or origin/master: %w, stderr: %s", err, stderr.String())
+		}
+	}
+
+	// Check if the branch already exists locally
+	cmd = s.executor("git", "show-ref", "--verify", "--quiet", "refs/heads/"+branchName)
+	cmd.Dir = directory
+
+	if err := cmd.Run(); err == nil {
+		// Branch exists locally, delete it first
+		log.Printf("Branch %s already exists locally, deleting it", branchName)
+		cmd = s.executor("git", "branch", "-D", branchName)
+		cmd.Dir = directory
+
+		stderr.Reset()
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to delete existing branch %s: %w, stderr: %s", branchName, err, stderr.String())
 		}
 	}
 
@@ -244,7 +315,16 @@ func (s *GitHubServiceImpl) CommitChanges(directory, message string) error {
 
 // PushChanges pushes changes to a remote repository
 func (s *GitHubServiceImpl) PushChanges(directory, branchName string) error {
-	cmd := s.executor("git", "push", "-u", "origin", branchName)
+	// Ensure git is configured to not prompt for credentials
+	cmd := s.executor("git", "config", "credential.helper", "store")
+	cmd.Dir = directory
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to configure git credential helper: %w", err)
+	}
+
+	// Push the changes
+	cmd = s.executor("git", "push", "-u", "origin", branchName)
 	cmd.Dir = directory
 
 	var stderr bytes.Buffer
@@ -307,13 +387,6 @@ func (s *GitHubServiceImpl) CreatePullRequest(owner, repo, title, body, head, ba
 	return &prResponse, nil
 }
 
-// ValidateWebhookSignature validates the signature of a webhook
-func (s *GitHubServiceImpl) ValidateWebhookSignature(body []byte, signature string) bool {
-	// Implement webhook signature validation if needed
-	// For simplicity, we're not implementing this now
-	return true
-}
-
 // CheckForkExists checks if a fork already exists for the given repository
 func (s *GitHubServiceImpl) CheckForkExists(owner, repo string) (exists bool, cloneURL string, err error) {
 	// Get authentication token
@@ -358,14 +431,26 @@ func (s *GitHubServiceImpl) CheckForkExists(owner, repo string) (exists bool, cl
 		return false, "", fmt.Errorf("failed to decode response: %w", err)
 	}
 
+	log.Printf("repos: %v", repos)
+
 	// Check if any of the repositories is a fork of the target repository
 	targetFullName := fmt.Sprintf("%s/%s", owner, repo)
+	log.Printf("Looking for fork of: %s", targetFullName)
+
 	for _, r := range repos {
+		log.Printf("Checking repo: %s, isFork: %t, source: %v", r.Name, r.Fork, r.Source)
 		if r.Fork && r.Source.FullName == targetFullName {
+			log.Printf("Found fork: %s", r.CloneURL)
+			return true, r.CloneURL, nil
+		}
+		// Fallback: check if the repo name matches the target repo name
+		if r.Fork && r.Name == repo {
+			log.Printf("Found fork by name match: %s", r.CloneURL)
 			return true, r.CloneURL, nil
 		}
 	}
 
+	log.Printf("No fork found for: %s", targetFullName)
 	return false, "", nil
 }
 
@@ -456,7 +541,7 @@ func (s *GitHubServiceImpl) ForkRepository(owner, repo string) (string, error) {
 
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("failed to fork repository: %s, status code: %d", string(body), resp.StatusCode)
+		return "", fmt.Errorf("failed to fork repository %s/%s: %s, status code: %d", owner, repo, string(body), resp.StatusCode)
 	}
 
 	var forkResponse struct {

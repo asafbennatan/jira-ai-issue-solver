@@ -111,20 +111,14 @@ func TestGetTicket(t *testing.T) {
 			})
 
 			// Create a JiraService with the mock client
+			config := &models.Config{}
+			config.Jira.BaseURL = "https://jira.example.com"
+			config.Jira.Username = "test-user"
+			config.Jira.APIToken = "test-token"
+
 			service := &JiraServiceImpl{
-				config: &models.Config{
-					Jira: struct {
-						BaseURL       string `json:"base_url" envconfig:"JIRA_BASE_URL" default:"https://your-domain.atlassian.net"`
-						Username      string `json:"username" envconfig:"JIRA_USERNAME"`
-						APIToken      string `json:"api_token" envconfig:"JIRA_API_TOKEN"`
-						WebhookSecret string `json:"webhook_secret" envconfig:"JIRA_WEBHOOK_SECRET"`
-					}{
-						BaseURL:  "https://jira.example.com",
-						Username: "test-user",
-						APIToken: "test-token",
-					},
-				},
-				client: mockClient,
+				config:   config,
+				client:   mockClient,
 				executor: execCommand,
 			}
 
@@ -248,20 +242,14 @@ func TestUpdateTicketLabels(t *testing.T) {
 			})
 
 			// Create a JiraService with the mock client
+			config := &models.Config{}
+			config.Jira.BaseURL = "https://jira.example.com"
+			config.Jira.Username = "test-user"
+			config.Jira.APIToken = "test-token"
+
 			service := &JiraServiceImpl{
-				config: &models.Config{
-					Jira: struct {
-						BaseURL       string `json:"base_url" envconfig:"JIRA_BASE_URL" default:"https://your-domain.atlassian.net"`
-						Username      string `json:"username" envconfig:"JIRA_USERNAME"`
-						APIToken      string `json:"api_token" envconfig:"JIRA_API_TOKEN"`
-						WebhookSecret string `json:"webhook_secret" envconfig:"JIRA_WEBHOOK_SECRET"`
-					}{
-						BaseURL:  "https://jira.example.com",
-						Username: "test-user",
-						APIToken: "test-token",
-					},
-				},
-				client: mockClient,
+				config:   config,
+				client:   mockClient,
 				executor: execCommand,
 			}
 
@@ -274,145 +262,6 @@ func TestUpdateTicketLabels(t *testing.T) {
 			}
 			if !tc.expectedError && err != nil {
 				t.Errorf("Expected no error but got: %v", err)
-			}
-		})
-	}
-}
-
-// TestValidateWebhookSignature tests the ValidateWebhookSignature method
-func TestValidateWebhookSignature(t *testing.T) {
-	// Create a JiraService
-	service := &JiraServiceImpl{
-		config: &models.Config{
-			Jira: struct {
-				BaseURL       string `json:"base_url" envconfig:"JIRA_BASE_URL" default:"https://your-domain.atlassian.net"`
-				Username      string `json:"username" envconfig:"JIRA_USERNAME"`
-				APIToken      string `json:"api_token" envconfig:"JIRA_API_TOKEN"`
-				WebhookSecret string `json:"webhook_secret" envconfig:"JIRA_WEBHOOK_SECRET"`
-			}{
-				WebhookSecret: "test-secret",
-			},
-		},
-		executor: execCommand,
-	}
-
-	// Test the method
-	body := []byte(`{"test":"data"}`)
-	signature := "test-signature"
-	result := service.ValidateWebhookSignature(body, signature)
-
-	// Since the current implementation always returns true, we expect true
-	if !result {
-		t.Errorf("Expected true but got false")
-	}
-}
-
-// TestRegisterWebhook tests the RegisterWebhook method
-func TestRegisterWebhook(t *testing.T) {
-	// Test cases
-	testCases := []struct {
-		name           string
-		webhook        *models.JiraWebhookRegistration
-		mockResponse   *http.Response
-		mockError      error
-		expectedResult *models.JiraWebhookResponse
-		expectedError  bool
-	}{
-		{
-			name: "successful registration",
-			webhook: &models.JiraWebhookRegistration{
-				Name:    "Test Webhook",
-				URL:     "https://example.com/webhook",
-				Events:  []string{"jira:issue_updated"},
-				Enabled: true,
-			},
-			mockResponse: &http.Response{
-				StatusCode: http.StatusCreated,
-				Body: io.NopCloser(bytes.NewReader([]byte(`{
-					"id": 12345,
-					"name": "Test Webhook",
-					"url": "https://example.com/webhook",
-					"events": ["jira:issue_updated"],
-					"enabled": true,
-					"self": "https://jira.example.com/rest/api/2/webhook/12345"
-				}`))),
-			},
-			mockError: nil,
-			expectedResult: &models.JiraWebhookResponse{
-				ID:      12345,
-				Name:    "Test Webhook",
-				URL:     "https://example.com/webhook",
-				Events:  []string{"jira:issue_updated"},
-				Enabled: true,
-				Self:    "https://jira.example.com/rest/api/2/webhook/12345",
-			},
-			expectedError: false,
-		},
-		{
-			name: "error response",
-			webhook: &models.JiraWebhookRegistration{
-				Name:    "Test Webhook",
-				URL:     "https://example.com/webhook",
-				Events:  []string{"jira:issue_updated"},
-				Enabled: true,
-			},
-			mockResponse: &http.Response{
-				StatusCode: http.StatusBadRequest,
-				Body:       io.NopCloser(bytes.NewReader([]byte(`{"errorMessages":["Error registering webhook"],"errors":{}}`))),
-			},
-			mockError:      nil,
-			expectedResult: nil,
-			expectedError:  true,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Create a mock HTTP client
-			mockClient := NewTestClient(func(req *http.Request) (*http.Response, error) {
-				return tc.mockResponse, tc.mockError
-			})
-
-			// Create a JiraService with the mock client
-			service := &JiraServiceImpl{
-				config: &models.Config{
-					Jira: struct {
-						BaseURL       string `json:"base_url" envconfig:"JIRA_BASE_URL" default:"https://your-domain.atlassian.net"`
-						Username      string `json:"username" envconfig:"JIRA_USERNAME"`
-						APIToken      string `json:"api_token" envconfig:"JIRA_API_TOKEN"`
-						WebhookSecret string `json:"webhook_secret" envconfig:"JIRA_WEBHOOK_SECRET"`
-					}{
-						BaseURL:  "https://jira.example.com",
-						Username: "test-user",
-						APIToken: "test-token",
-					},
-				},
-				client: mockClient,
-				executor: execCommand,
-			}
-
-			// Call the method being tested
-			result, err := service.RegisterWebhook(tc.webhook)
-
-			// Check the results
-			if tc.expectedError && err == nil {
-				t.Errorf("Expected an error but got nil")
-			}
-			if !tc.expectedError && err != nil {
-				t.Errorf("Expected no error but got: %v", err)
-			}
-			if tc.expectedResult != nil {
-				if result == nil {
-					t.Errorf("Expected a result but got nil")
-				} else {
-					if result.ID != tc.expectedResult.ID {
-						t.Errorf("Expected result ID %d but got %d", tc.expectedResult.ID, result.ID)
-					}
-					if result.Name != tc.expectedResult.Name {
-						t.Errorf("Expected result Name %s but got %s", tc.expectedResult.Name, result.Name)
-					}
-					// Add more assertions for other fields as needed
-				}
 			}
 		})
 	}

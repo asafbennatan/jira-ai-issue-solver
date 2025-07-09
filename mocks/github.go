@@ -6,16 +6,15 @@ import (
 
 // MockGitHubService is a mock implementation of the GitHubService interface
 type MockGitHubService struct {
-	CloneRepositoryFunc          func(repoURL, directory string) error
-	CreateBranchFunc             func(directory, branchName string) error
-	CommitChangesFunc            func(directory, message string) error
-	PushChangesFunc              func(directory, branchName string) error
-	CreatePullRequestFunc        func(owner, repo, title, body, head, base string) (*models.GitHubCreatePRResponse, error)
-	ValidateWebhookSignatureFunc func(body []byte, signature string) bool
-	ForkRepositoryFunc           func(owner, repo string) (string, error)
-	CheckForkExistsFunc          func(owner, repo string) (exists bool, cloneURL string, err error)
-	ResetForkFunc                func(forkCloneURL, directory string) error
-	SyncForkWithUpstreamFunc     func(owner, repo string) error
+	CloneRepositoryFunc      func(repoURL, directory string) error
+	CreateBranchFunc         func(directory, branchName string) error
+	CommitChangesFunc        func(directory, message string) error
+	PushChangesFunc          func(directory, branchName string) error
+	CreatePullRequestFunc    func(owner, repo, title, body, head, base string) (*models.GitHubCreatePRResponse, error)
+	ForkRepositoryFunc       func(owner, repo string) (string, error)
+	CheckForkExistsFunc      func(owner, repo string) (exists bool, cloneURL string, err error)
+	ResetForkFunc            func(forkCloneURL, directory string) error
+	SyncForkWithUpstreamFunc func(owner, repo string) error
 }
 
 // CloneRepository is the mock implementation of GitHubService's CloneRepository method
@@ -56,14 +55,6 @@ func (m *MockGitHubService) CreatePullRequest(owner, repo, title, body, head, ba
 		return m.CreatePullRequestFunc(owner, repo, title, body, head, base)
 	}
 	return nil, nil
-}
-
-// ValidateWebhookSignature is the mock implementation of GitHubService's ValidateWebhookSignature method
-func (m *MockGitHubService) ValidateWebhookSignature(body []byte, signature string) bool {
-	if m.ValidateWebhookSignatureFunc != nil {
-		return m.ValidateWebhookSignatureFunc(body, signature)
-	}
-	return true
 }
 
 // ForkRepository is the mock implementation of GitHubService's ForkRepository method

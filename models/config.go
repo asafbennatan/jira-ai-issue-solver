@@ -1,42 +1,90 @@
 package models
 
+import (
+	"errors"
+	"os"
+
+	"gopkg.in/yaml.v3"
+)
+
 // Config represents the application configuration
 type Config struct {
 	// Server configuration
 	Server struct {
-		Port int    `json:"port" envconfig:"SERVER_PORT" default:"8080"`
-		URL  string `json:"url" envconfig:"SERVER_URL"`
-	} `json:"server"`
+		Port int `yaml:"port" default:"8080"`
+	} `yaml:"server"`
 
 	// Jira configuration
 	Jira struct {
-		BaseURL       string `json:"base_url" envconfig:"JIRA_BASE_URL" default:"https://your-domain.atlassian.net"`
-		Username      string `json:"username" envconfig:"JIRA_USERNAME"`
-		APIToken      string `json:"api_token" envconfig:"JIRA_API_TOKEN"`
-		WebhookSecret string `json:"webhook_secret" envconfig:"JIRA_WEBHOOK_SECRET"`
-	} `json:"jira"`
+		BaseURL              string `yaml:"base_url"`
+		Username             string `yaml:"username"`
+		APIToken             string `yaml:"api_token"`
+		IntervalSeconds      int    `yaml:"interval_seconds" default:"300"`
+		DisableErrorComments bool   `yaml:"disable_error_comments" default:"false"`
+	} `yaml:"jira"`
 
 	// GitHub configuration
 	GitHub struct {
-		// GitHub App configuration
-		AppID          int64  `json:"app_id" envconfig:"GITHUB_APP_ID"`
-		AppPrivateKey  string `json:"app_private_key" envconfig:"GITHUB_APP_PRIVATE_KEY"`
-		InstallationID int64  `json:"installation_id" envconfig:"GITHUB_INSTALLATION_ID"`
+		PersonalAccessToken string `yaml:"personal_access_token"`
+		BotUsername         string `yaml:"bot_username"`
+		BotEmail            string `yaml:"bot_email"`
+	} `yaml:"github"`
 
-		// Git commit configuration
-		BotUsername string `json:"bot_username" envconfig:"GITHUB_BOT_USERNAME"`
-		BotEmail    string `json:"bot_email" envconfig:"GITHUB_BOT_EMAIL"`
-	} `json:"github"`
+	// AI Provider selection
+	AIProvider string `yaml:"ai_provider" default:"claude"` // "claude" or "gemini"
 
 	// Claude CLI configuration
 	Claude struct {
-		Path                       string `json:"path" envconfig:"CLAUDE_CLI_PATH" default:"claude-cli"`
-		Timeout                    int    `json:"timeout" envconfig:"CLAUDE_TIMEOUT" default:"300"`
-		DangerouslySkipPermissions bool   `json:"dangerously_skip_permissions" envconfig:"CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS" default:"false"`
-		AllowedTools               string `json:"allowed_tools" envconfig:"CLAUDE_ALLOWED_TOOLS"`
-		DisallowedTools            string `json:"disallowed_tools" envconfig:"CLAUDE_DISALLOWED_TOOLS"`
-	} `json:"claude"`
+		CLIPath                    string `yaml:"cli_path" default:"claude-cli"`
+		Timeout                    int    `yaml:"timeout" default:"300"`
+		DangerouslySkipPermissions bool   `yaml:"dangerously_skip_permissions" default:"false"`
+		AllowedTools               string `yaml:"allowed_tools" default:"Bash Edit"`
+		DisallowedTools            string `yaml:"disallowed_tools" default:"Python"`
+	} `yaml:"claude"`
+
+	// Gemini CLI configuration
+	Gemini struct {
+		CLIPath  string `yaml:"cli_path" default:"gemini"`
+		Timeout  int    `yaml:"timeout" default:"300"`
+		Model    string `yaml:"model" default:"gemini-2.5-pro"`
+		AllFiles bool   `yaml:"all_files" default:"false"`
+		Sandbox  bool   `yaml:"sandbox" default:"false"`
+		APIKey   string `yaml:"api_key"`
+	} `yaml:"gemini"`
+
+	// Component to Repository mapping
+	ComponentToRepo map[string]string `yaml:"component_to_repo"`
 
 	// Temporary directory for cloning repositories
-	TempDir string `json:"temp_dir" envconfig:"TEMP_DIR" default:"/tmp/jira-ai-issue-solver"`
+	TempDir string `yaml:"temp_dir" default:"/tmp/jira-ai-issue-solver"`
+}
+
+// LoadConfig loads configuration from a YAML file
+func LoadConfig(configPath string) (*Config, error) {
+	// Read the config file
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse YAML
+	var config Config
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+
+	// Validate AI provider configuration
+	if err := config.validateAIProvider(); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+// validateAIProvider ensures only one AI provider is configured
+func (c *Config) validateAIProvider() error {
+	if c.AIProvider != "claude" && c.AIProvider != "gemini" {
+		return errors.New("ai_provider must be either 'claude' or 'gemini'")
+	}
+	return nil
 }
