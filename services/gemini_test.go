@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"jira-ai-issue-solver/models"
 )
 
 func TestGeminiService_GenerateDocumentation(t *testing.T) {
@@ -60,6 +62,65 @@ Please read CONTRIBUTING.md for details.
 	err = mockService.GenerateDocumentation(tempDir)
 	if err != nil {
 		t.Fatalf("Second call to GenerateDocumentation failed: %v", err)
+	}
+}
+
+func TestGeminiService_GenerateDocumentation_RealCLI(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "gemini-doc-test-real")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create a test README.md file
+	readmeContent := `# Test Project
+
+This is a test project for documentation generation.
+
+## Usage
+
+Run the project with:
+
+` + "```bash" + `
+go run main.go
+` + "```" + `
+
+## Contributing
+
+Please read CONTRIBUTING.md for details.
+`
+	readmePath := filepath.Join(tempDir, "README.md")
+	if err := os.WriteFile(readmePath, []byte(readmeContent), 0644); err != nil {
+		t.Fatalf("Failed to create README.md: %v", err)
+	}
+
+	// Create a test config with echo as CLI to see the output
+	config := &models.Config{}
+	config.Gemini.CLIPath = "echo"
+	config.Gemini.Timeout = 60
+	config.Gemini.Model = "gemini-2.5-pro"
+
+	// Create a Gemini service
+	service := NewGeminiService(config)
+
+	// Test that GEMINI.md doesn't exist initially
+	geminiPath := filepath.Join(tempDir, "GEMINI.md")
+	if _, err := os.Stat(geminiPath); err == nil {
+		t.Fatal("GEMINI.md should not exist initially")
+	}
+
+	// Generate documentation - this should print the CLI output
+	err = service.GenerateDocumentation(tempDir)
+	if err != nil {
+		t.Logf("GenerateDocumentation failed (expected with echo): %v", err)
+		// This is expected to fail with echo, but we want to see the output
+		return
+	}
+
+	// If it succeeds, check that GEMINI.md exists
+	if _, err := os.Stat(geminiPath); err != nil {
+		t.Fatal("GEMINI.md should exist after generation")
 	}
 }
 

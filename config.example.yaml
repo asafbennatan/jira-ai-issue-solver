@@ -9,6 +9,10 @@ jira:
   api_token: your-jira-api-token
   interval_seconds: 300
   disable_error_comments: false
+  status_transitions:
+    todo: "To Do"
+    in_progress: "In Progress"
+    in_review: "In Review"
 
 # GitHub Configuration
 github:

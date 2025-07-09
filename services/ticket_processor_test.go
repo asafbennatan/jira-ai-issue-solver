@@ -84,6 +84,9 @@ func TestTicketProcessor_ProcessTicket(t *testing.T) {
 	// Create config
 	config := &models.Config{}
 	config.Jira.IntervalSeconds = 300
+	config.Jira.StatusTransitions.Todo = "To Do"
+	config.Jira.StatusTransitions.InProgress = "In Progress"
+	config.Jira.StatusTransitions.InReview = "In Review"
 	config.ComponentToRepo = map[string]string{
 		"frontend": "https://github.com/example/frontend.git",
 	}
@@ -221,5 +224,85 @@ func TestTicketProcessor_CreatePullRequestHeadFormat(t *testing.T) {
 	expectedPRTitle := "TEST-123: Test ticket"
 	if mockGitHub.capturedPRTitle != expectedPRTitle {
 		t.Errorf("Expected PR title to be '%s', got '%s'", expectedPRTitle, mockGitHub.capturedPRTitle)
+	}
+}
+
+// Mock services for testing configurable status transitions
+type mockJiraServiceForStatusTransitions struct {
+	capturedStatuses []string
+}
+
+func (m *mockJiraServiceForStatusTransitions) GetTicket(key string) (*models.JiraTicketResponse, error) {
+	return &models.JiraTicketResponse{
+		Key: key,
+		Fields: models.JiraFields{
+			Summary:     "Test ticket",
+			Description: "Test description",
+			Components: []models.JiraComponent{
+				{
+					ID:   "1",
+					Name: "frontend",
+				},
+			},
+		},
+	}, nil
+}
+func (m *mockJiraServiceForStatusTransitions) UpdateTicketLabels(key string, addLabels, removeLabels []string) error {
+	return nil
+}
+func (m *mockJiraServiceForStatusTransitions) UpdateTicketStatus(key string, status string) error {
+	m.capturedStatuses = append(m.capturedStatuses, status)
+	return nil
+}
+func (m *mockJiraServiceForStatusTransitions) AddComment(key string, comment string) error {
+	return nil
+}
+func (m *mockJiraServiceForStatusTransitions) SearchTickets(jql string) (*models.JiraSearchResponse, error) {
+	return &models.JiraSearchResponse{
+		Total:  0,
+		Issues: []models.JiraIssue{},
+	}, nil
+}
+
+func TestTicketProcessor_ConfigurableStatusTransitions(t *testing.T) {
+	// Create mock services
+	mockJiraService := &mockJiraServiceForStatusTransitions{}
+	mockGitHubService := &mockGitHubServiceForProcessor{}
+	mockClaudeService := &mockClaudeServiceForProcessor{}
+
+	// Create config with custom status transitions
+	config := &models.Config{}
+	config.Jira.IntervalSeconds = 300
+	config.Jira.StatusTransitions.Todo = "To Do"
+	config.Jira.StatusTransitions.InProgress = "Development"
+	config.Jira.StatusTransitions.InReview = "Code Review"
+	config.ComponentToRepo = map[string]string{
+		"frontend": "https://github.com/example/frontend.git",
+	}
+	config.TempDir = "/tmp/test"
+
+	// Create ticket processor
+	processor := NewTicketProcessor(mockJiraService, mockGitHubService, mockClaudeService, config)
+
+	// Test processing a ticket
+	err := processor.ProcessTicket("TEST-123")
+	if err != nil {
+		t.Errorf("Expected no error but got: %v", err)
+	}
+
+	// Verify that the correct status transitions were used
+	expectedStatuses := []string{"Development", "Code Review"}
+	if len(mockJiraService.capturedStatuses) != len(expectedStatuses) {
+		t.Errorf("Expected %d status updates, got %d", len(expectedStatuses), len(mockJiraService.capturedStatuses))
+	}
+
+	for i, expectedStatus := range expectedStatuses {
+		if i >= len(mockJiraService.capturedStatuses) {
+			t.Errorf("Missing status update at index %d", i)
+			continue
+		}
+		if mockJiraService.capturedStatuses[i] != expectedStatus {
+			t.Errorf("Expected status at index %d to be '%s', got '%s'", i, expectedStatus, mockJiraService.capturedStatuses[i])
+		}
 	}
 }

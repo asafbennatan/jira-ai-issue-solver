@@ -21,6 +21,11 @@ type Config struct {
 		APIToken             string `yaml:"api_token"`
 		IntervalSeconds      int    `yaml:"interval_seconds" default:"300"`
 		DisableErrorComments bool   `yaml:"disable_error_comments" default:"false"`
+		StatusTransitions    struct {
+			Todo       string `yaml:"todo" default:"To Do"`
+			InProgress string `yaml:"in_progress" default:"In Progress"`
+			InReview   string `yaml:"in_review" default:"In Review"`
+		} `yaml:"status_transitions"`
 	} `yaml:"jira"`
 
 	// GitHub configuration
@@ -78,6 +83,11 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, err
 	}
 
+	// Validate status transitions configuration
+	if err := config.validateStatusTransitions(); err != nil {
+		return nil, err
+	}
+
 	return &config, nil
 }
 
@@ -85,6 +95,20 @@ func LoadConfig(configPath string) (*Config, error) {
 func (c *Config) validateAIProvider() error {
 	if c.AIProvider != "claude" && c.AIProvider != "gemini" {
 		return errors.New("ai_provider must be either 'claude' or 'gemini'")
+	}
+	return nil
+}
+
+// validateStatusTransitions ensures status transitions are properly configured
+func (c *Config) validateStatusTransitions() error {
+	if c.Jira.StatusTransitions.Todo == "" {
+		return errors.New("jira.status_transitions.todo cannot be empty")
+	}
+	if c.Jira.StatusTransitions.InProgress == "" {
+		return errors.New("jira.status_transitions.in_progress cannot be empty")
+	}
+	if c.Jira.StatusTransitions.InReview == "" {
+		return errors.New("jira.status_transitions.in_review cannot be empty")
 	}
 	return nil
 }

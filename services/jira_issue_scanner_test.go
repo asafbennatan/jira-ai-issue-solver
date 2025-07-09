@@ -83,6 +83,7 @@ func TestJiraIssueScannerService_ScanForTickets(t *testing.T) {
 	// Create config
 	config := &models.Config{}
 	config.Jira.IntervalSeconds = 300
+	config.Jira.StatusTransitions.Todo = "To Do"
 	config.TempDir = "/tmp/test"
 
 	// Create scanner service
@@ -96,3 +97,5 @@ func TestJiraIssueScannerService_ScanForTickets(t *testing.T) {
 	// Test scanning for tickets
 	scanner.scanForTickets()
 }
+
+// Note: The JQL query now only filters by assignee and status for simpler logic.

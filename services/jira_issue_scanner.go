@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -89,8 +90,10 @@ func (s *JiraIssueScannerServiceImpl) Stop() {
 func (s *JiraIssueScannerServiceImpl) scanForTickets() {
 	log.Println("Scanning for tickets that need AI processing...")
 
-	// Build JQL query to find tickets with "good-for-ai" label but without "ai-in-progress" label
-	jql := `labels = "good-for-ai" AND labels != "ai-in-progress" ORDER BY updated DESC`
+	todoStatus := s.config.Jira.StatusTransitions.Todo
+
+	// Build JQL query to find tickets assigned to current user in TODO status
+	jql := fmt.Sprintf(`assignee =currentUser() AND status = "%s" ORDER BY updated DESC`, todoStatus)
 
 	searchResponse, err := s.jiraService.SearchTickets(jql)
 	if err != nil {
@@ -109,23 +112,7 @@ func (s *JiraIssueScannerServiceImpl) scanForTickets() {
 	for _, issue := range searchResponse.Issues {
 		log.Printf("Found ticket %s", issue.Key)
 
-		// Check if the ticket has the required labels
-		hasGoodForAILabel := false
-		hasAIInProgressLabel := false
-
-		for _, label := range issue.Fields.Labels {
-			if label == string(models.LabelGoodForAI) {
-				hasGoodForAILabel = true
-			}
-			if label == string(models.LabelAIInProgress) {
-				hasAIInProgressLabel = true
-			}
-		}
-
-		if !hasGoodForAILabel || hasAIInProgressLabel {
-			log.Printf("Ticket %s doesn't meet processing criteria, skipping", issue.Key)
-			continue
-		}
+		// Process all tickets returned by the search
 
 		// Process the ticket asynchronously
 		go s.ticketProcessor.ProcessTicket(issue.Key)

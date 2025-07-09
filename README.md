@@ -8,7 +8,7 @@ A Go application that automatically processes Jira tickets labeled with "good-fo
 - **AI-Powered Code Generation**: Uses Claude CLI to analyze tickets and generate code changes
 - **GitHub Integration**: Creates forks, branches, and pull requests automatically
 - **Jira Integration**: Updates ticket status and adds comments with PR links
-- **Label Management**: Automatically manages labels to prevent duplicate processing
+- **Status Management**: Automatically manages ticket status transitions during processing
 
 ## How It Works
 
@@ -16,8 +16,8 @@ A Go application that automatically processes Jira tickets labeled with "good-fo
 
 The service runs a periodic scanner that:
 
-1. Searches for Jira tickets with the "good-for-ai" label but without the "ai-in-progress" label
-2. Processes each ticket by adding the "ai-in-progress" label and updating status to "In Progress"
+1. Searches for Jira tickets assigned to the configured Jira user that are in the configured "todo" status
+2. Processes each ticket by updating status to "In Progress"
 3. Forks the repository associated with the ticket to the bot's GitHub account
 4. Clones the forked repository and creates a new branch
 5. Uses Claude CLI to generate code changes based on the ticket description and comments
@@ -80,6 +80,12 @@ jira:
   base_url: https://your-domain.atlassian.net
   username: your-username
   api_token: your-jira-api-token
+  interval_seconds: 300
+  disable_error_comments: false
+  status_transitions:
+    todo: "To Do"
+    in_progress: "In Progress"
+    in_review: "In Review"
 
 # GitHub Configuration
 github:
@@ -115,9 +121,17 @@ jira_config:
 
 ### Jira Configuration
 
-The `jira_config` section contains additional Jira-specific settings:
+The `jira` section contains Jira-specific settings:
 
+- `base_url`: Your Jira instance URL
+- `username`: Your Jira username
+- `api_token`: Your Jira API token
+- `interval_seconds`: How often to scan for new tickets (default: 300 seconds)
 - `disable_error_comments`: When set to `true`, prevents the application from adding error comments to Jira tickets when processing fails. Useful for testing or to avoid spamming tickets with error messages.
+- `status_transitions`: Configuration for ticket status transitions during processing
+  - `todo`: Status name for tickets ready for AI processing (default: "To Do")
+  - `in_progress`: Status name to set when AI starts processing (default: "In Progress")
+  - `in_review`: Status name to set when PR is created (default: "In Review")
 
 ### Component Mapping
 
@@ -171,30 +185,53 @@ go test ./services
 
 To have a ticket processed by the AI:
 
-1. Add the "good-for-ai" label to the ticket
-2. Ensure the ticket's project has the "ai.bot.github.repo" property set to the repository URL
-3. The scanner will automatically pick up the ticket and process it
+1. Ensure the ticket is in the configured "todo" status
+2. The scanner will automatically pick up the ticket and process it
 
 ### Ticket Processing Flow
 
-1. **Scanning**: The scanner periodically searches for tickets with "good-for-ai" label
-2. **Processing**: When found, the ticket is marked with "ai-in-progress" label
+1. **Scanning**: The scanner periodically searches for tickets in "todo" status assigned to the configured user
+2. **Processing**: When found, the ticket status is updated to "In Progress"
 3. **Code Generation**: Claude CLI analyzes the ticket and generates code changes
 4. **Pull Request**: A PR is created with the changes
-5. **Completion**: The ticket is updated with "ai-pr-created" label and status changed to "In Review"
+5. **Completion**: The ticket status is changed to "In Review"
 
-### Labels Used
 
-- `good-for-ai`: Marks tickets for AI processing
-- `ai-in-progress`: Prevents duplicate processing
-- `ai-pr-created`: Indicates a PR has been created
-- `ai-failed`: Indicates processing failed
 
 ### Status Transitions
 
-- **Open** → **In Progress** (when processing starts)
-- **In Progress** → **In Review** (when PR is created)
-- **In Progress** → **Open** (if processing fails)
+The application automatically transitions Jira ticket statuses during processing. These status transitions are configurable in the `jira.status_transitions` section of the configuration file:
+
+```yaml
+jira:
+  status_transitions:
+    todo: "To Do"               # Status for tickets ready for AI processing
+    in_progress: "In Progress"  # Status when AI starts processing
+    in_review: "In Review"      # Status when PR is created
+```
+
+**Default Flow:**
+- **todo** → **in_progress** (when processing starts)
+- **in_progress** → **in_review** (when PR is created)
+- **in_progress** → **Open** (if processing fails)
+
+**Ticket Scanning:**
+The scanner looks for tickets that are assigned to the configured Jira user and are in the configured "todo" status. This approach ensures only appropriate tickets are processed.
+
+**Custom Status Names:**
+You can customize the status names to match your Jira workflow. For example:
+```yaml
+jira:
+  status_transitions:
+    todo: "To Do"
+    in_progress: "Development"
+    in_review: "Code Review"
+```
+
+This would:
+- Look for tickets in "To Do" status (configured as `todo`) for processing
+- Transition tickets to "Development" (configured as `in_progress`) when processing starts
+- Transition tickets to "Code Review" (configured as `in_review`) when the PR is created
 
 ## Architecture
 

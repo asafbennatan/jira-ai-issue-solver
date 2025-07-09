@@ -67,16 +67,8 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 	}
 	log.Printf("found repository mapping for component: %s : repo url: %s", firstComponent, repoURL)
 
-	// Add the "ai-in-progress" label to prevent duplicate processing
-	err = p.jiraService.UpdateTicketLabels(ticketKey, []string{string(models.LabelAIInProgress)}, nil)
-	if err != nil {
-		log.Printf("failed to add ai-in-progress label: %v", err)
-		p.handleFailure(ticketKey, fmt.Sprintf("Failed to add ai-in-progress label: %v", err))
-		return err
-	}
-
-	// Update the ticket status to "In Progress"
-	err = p.jiraService.UpdateTicketStatus(ticketKey, string(models.StatusInProgress))
+	// Update the ticket status to the configured "In Progress" status
+	err = p.jiraService.UpdateTicketStatus(ticketKey, p.config.Jira.StatusTransitions.InProgress)
 	if err != nil {
 		log.Printf("failed to update ticket status: %v", err)
 		// Continue processing even if status update fails
@@ -211,15 +203,8 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 		// Continue even if comment fails
 	}
 
-	// Update the ticket labels
-	err = p.jiraService.UpdateTicketLabels(ticketKey, []string{string(models.LabelAIPRCreated)}, []string{string(models.LabelAIInProgress)})
-	if err != nil {
-		log.Printf("failed to update ticket labels: %v", err)
-		// Continue even if label update fails
-	}
-
-	// Update the ticket status to "In Review"
-	err = p.jiraService.UpdateTicketStatus(ticketKey, string(models.StatusInReview))
+	// Update the ticket status to the configured "In Review" status
+	err = p.jiraService.UpdateTicketStatus(ticketKey, p.config.Jira.StatusTransitions.InReview)
 	if err != nil {
 		log.Printf("failed to update ticket status: %v", err)
 		// Continue even if status update fails
@@ -241,11 +226,6 @@ func (p *TicketProcessorImpl) handleFailure(ticketKey, errorMessage string) {
 		log.Printf("Error commenting disabled, not adding error comment for ticket %s: %s", ticketKey, errorMessage)
 	}
 
-	// Update the ticket labels
-	err := p.jiraService.UpdateTicketLabels(ticketKey, []string{string(models.LabelAIFailed)}, []string{string(models.LabelAIInProgress)})
-	if err != nil {
-		log.Printf("failed to update ticket labels: %v", err)
-	}
 }
 
 // generatePrompt generates a prompt for Claude CLI based on the ticket
