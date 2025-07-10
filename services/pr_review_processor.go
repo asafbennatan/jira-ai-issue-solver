@@ -2,12 +2,13 @@ package services
 
 import (
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 	"time"
 
 	"jira-ai-issue-solver/models"
+
+	"go.uber.org/zap"
 )
 
 // PRReviewProcessor defines the interface for processing PR review feedback
@@ -22,6 +23,7 @@ type PRReviewProcessorImpl struct {
 	githubService GitHubService
 	aiService     AIService
 	config        *models.Config
+	logger        *zap.Logger
 }
 
 // NewPRReviewProcessor creates a new PRReviewProcessor
@@ -30,56 +32,58 @@ func NewPRReviewProcessor(
 	githubService GitHubService,
 	aiService AIService,
 	config *models.Config,
+	logger *zap.Logger,
 ) PRReviewProcessor {
 	return &PRReviewProcessorImpl{
 		jiraService:   jiraService,
 		githubService: githubService,
 		aiService:     aiService,
 		config:        config,
+		logger:        logger,
 	}
 }
 
 // ProcessPRReviewFeedback processes feedback for a ticket that has PR review feedback
 func (p *PRReviewProcessorImpl) ProcessPRReviewFeedback(ticketKey string) error {
-	log.Printf("Processing PR review feedback for ticket %s", ticketKey)
+	p.logger.Info("Processing PR review feedback for ticket", zap.String("ticket", ticketKey))
 
 	// Get the ticket details
 	ticket, err := p.jiraService.GetTicket(ticketKey)
 	if err != nil {
-		log.Printf("Failed to get ticket details: %v", err)
+		p.logger.Error("Failed to get ticket details", zap.String("ticket", ticketKey), zap.Error(err))
 		return err
 	}
 
 	// Get the PR URL from the custom field
 	prURL, err := p.getPRURLFromTicket(ticket)
 	if err != nil {
-		log.Printf("Failed to get PR URL from ticket: %v", err)
+		p.logger.Error("Failed to get PR URL from ticket", zap.String("ticket", ticketKey), zap.Error(err))
 		return err
 	}
 
 	if prURL == "" {
-		log.Printf("No PR URL found for ticket %s", ticketKey)
+		p.logger.Info("No PR URL found for ticket", zap.String("ticket", ticketKey))
 		return nil
 	}
 
 	// Extract PR details from the URL
 	owner, repo, prNumber, err := p.extractPRInfoFromURL(prURL)
 	if err != nil {
-		log.Printf("Failed to extract PR info from URL: %v", err)
+		p.logger.Error("Failed to extract PR info from URL", zap.String("ticket", ticketKey), zap.String("pr_url", prURL), zap.Error(err))
 		return err
 	}
 
 	// Get detailed PR information including reviews
 	prDetails, err := p.githubService.GetPRDetails(owner, repo, prNumber)
 	if err != nil {
-		log.Printf("Failed to get PR details: %v", err)
+		p.logger.Error("Failed to get PR details", zap.String("ticket", ticketKey), zap.String("owner", owner), zap.String("repo", repo), zap.Int("pr_number", prNumber), zap.Error(err))
 		return err
 	}
 
 	// Get the last processing timestamp from PR comments
 	lastProcessedTime, err := p.getLastProcessingTimestamp(owner, repo, prNumber)
 	if err != nil {
-		log.Printf("Failed to get last processing timestamp: %v", err)
+		p.logger.Error("Failed to get last processing timestamp", zap.String("ticket", ticketKey), zap.Error(err))
 		// Continue with processing, will use a default time
 		lastProcessedTime = time.Time{}
 	}
@@ -91,7 +95,7 @@ func (p *PRReviewProcessorImpl) ProcessPRReviewFeedback(ticketKey string) error 
 	// Check if there are any "request changes" reviews in the filtered set
 	hasRequestChanges := p.hasRequestChangesReviews(filteredReviews)
 	if !hasRequestChanges && len(filteredComments) == 0 {
-		log.Printf("No new 'request changes' reviews or comments found for PR %d since %v", prNumber, lastProcessedTime)
+		p.logger.Info("No new 'request changes' reviews or comments found for PR", zap.String("ticket", ticketKey), zap.Int("pr_number", prNumber), zap.Time("last_processed", lastProcessedTime))
 		return nil
 	}
 
@@ -101,25 +105,25 @@ func (p *PRReviewProcessorImpl) ProcessPRReviewFeedback(ticketKey string) error 
 	// Get the repository URL from the PR details (our fork)
 	repoURL, err := p.getRepositoryURLFromPR(prDetails)
 	if err != nil {
-		log.Printf("Failed to get repository URL from PR: %v", err)
+		p.logger.Error("Failed to get repository URL from PR", zap.String("ticket", ticketKey), zap.Error(err))
 		return err
 	}
 
 	// Clone the repository and apply fixes
 	err = p.applyFeedbackFixes(ticketKey, repoURL, prDetails, feedback)
 	if err != nil {
-		log.Printf("Failed to apply feedback fixes: %v", err)
+		p.logger.Error("Failed to apply feedback fixes", zap.String("ticket", ticketKey), zap.Error(err))
 		return err
 	}
 
 	// Update the processing timestamp in PR comments
 	err = p.updateProcessingTimestamp(owner, repo, prNumber, ticketKey)
 	if err != nil {
-		log.Printf("Failed to update processing timestamp: %v", err)
+		p.logger.Error("Failed to update processing timestamp", zap.String("ticket", ticketKey), zap.Error(err))
 		// Continue even if timestamp update fails
 	}
 
-	log.Printf("Successfully processed PR review feedback for ticket %s", ticketKey)
+	p.logger.Info("Successfully processed PR review feedback for ticket", zap.String("ticket", ticketKey))
 	return nil
 }
 
@@ -135,7 +139,7 @@ func (p *PRReviewProcessorImpl) getPRURLFromTicket(ticket *models.JiraTicketResp
 		return "", fmt.Errorf("failed to resolve field name '%s' to ID: %w", p.config.Jira.GitPullRequestFieldName, err)
 	}
 	// Log the fieldID for debugging
-	log.Printf("DEBUG: Resolved field name '%s' to field ID '%s'", p.config.Jira.GitPullRequestFieldName, fieldID)
+	p.logger.Debug("Resolved field name to field ID", zap.String("field_name", p.config.Jira.GitPullRequestFieldName), zap.String("field_id", fieldID))
 
 	// Get the ticket with expanded fields to access custom fields
 	fields, _, err := p.jiraService.GetTicketWithExpandedFields(ticket.Key)
@@ -163,7 +167,7 @@ func (p *PRReviewProcessorImpl) getPRURLFromTicket(ticket *models.JiraTicketResp
 		}
 	}
 	// Log the full output for debugging
-	log.Printf("DEBUG: Full ticket fields: %+v", fields)
+	p.logger.Debug("Full ticket fields", zap.Any("fields", fields))
 
 	return "", nil
 }
@@ -260,7 +264,7 @@ func (p *PRReviewProcessorImpl) getRepositoryURLFromPR(pr *models.GitHubPRDetail
 
 // applyFeedbackFixes applies the feedback fixes to the code
 func (p *PRReviewProcessorImpl) applyFeedbackFixes(ticketKey, forkURL string, pr *models.GitHubPRDetails, feedback string) error {
-	log.Printf("Applying feedback fixes for ticket %s", ticketKey)
+	p.logger.Info("Applying feedback fixes for ticket", zap.String("ticket", ticketKey))
 
 	// Clone the repository
 	repoDir := fmt.Sprintf("%s/%s-feedback", p.config.TempDir, ticketKey)
@@ -304,7 +308,7 @@ func (p *PRReviewProcessorImpl) applyFeedbackFixes(ticketKey, forkURL string, pr
 		return fmt.Errorf("failed to push changes: %w", err)
 	}
 
-	log.Printf("Successfully updated PR #%d with feedback fixes for ticket %s", pr.Number, ticketKey)
+	p.logger.Info("Successfully updated PR #%d with feedback fixes for ticket %s", zap.Int("pr_number", pr.Number), zap.String("ticket", ticketKey))
 	return nil
 }
 

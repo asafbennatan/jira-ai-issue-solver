@@ -6,9 +6,14 @@ import (
 
 	"jira-ai-issue-solver/mocks"
 	"jira-ai-issue-solver/models"
+
+	"go.uber.org/zap"
 )
 
 func TestJiraIssueScannerService_StartStop(t *testing.T) {
+	// Create test logger
+	logger := zap.NewNop()
+
 	// Create mock services with stubbed methods
 	mockJiraService := &mocks.MockJiraService{
 		SearchTicketsFunc: func(jql string) (*models.JiraSearchResponse, error) {
@@ -27,7 +32,7 @@ func TestJiraIssueScannerService_StartStop(t *testing.T) {
 	config.TempDir = "/tmp/test"
 
 	// Create scanner service
-	scanner := NewJiraIssueScannerService(mockJiraService, mockGitHubService, mockClaudeService, config)
+	scanner := NewJiraIssueScannerService(mockJiraService, mockGitHubService, mockClaudeService, config, logger)
 
 	// Start the scanner
 	scanner.Start()
@@ -43,6 +48,9 @@ func TestJiraIssueScannerService_StartStop(t *testing.T) {
 }
 
 func TestJiraIssueScannerService_ScanForTickets(t *testing.T) {
+	// Create test logger
+	logger := zap.NewNop()
+
 	// Create mock services with stubbed methods
 	mockJiraService := &mocks.MockJiraService{
 		SearchTicketsFunc: func(jql string) (*models.JiraSearchResponse, error) {
@@ -118,6 +126,7 @@ func TestJiraIssueScannerService_ScanForTickets(t *testing.T) {
 		aiService:       mockClaudeService,
 		ticketProcessor: mockTicketProcessor,
 		config:          config,
+		logger:          logger,
 	}
 
 	// Test scanning for tickets

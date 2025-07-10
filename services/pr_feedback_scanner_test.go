@@ -6,9 +6,14 @@ import (
 
 	"jira-ai-issue-solver/mocks"
 	"jira-ai-issue-solver/models"
+
+	"go.uber.org/zap"
 )
 
 func TestPRFeedbackScannerService_StartStop(t *testing.T) {
+	// Create test logger
+	logger := zap.NewNop()
+
 	// Create mock services
 	mockJiraService := &mocks.MockJiraService{
 		GetTicketFunc: func(key string) (*models.JiraTicketResponse, error) {
@@ -111,7 +116,7 @@ func TestPRFeedbackScannerService_StartStop(t *testing.T) {
 	config.TempDir = "/tmp/test"
 
 	// Create scanner service
-	scanner := NewPRFeedbackScannerService(mockJiraService, mockGitHubService, mockAIService, config)
+	scanner := NewPRFeedbackScannerService(mockJiraService, mockGitHubService, mockAIService, config, logger)
 
 	// Start the scanner
 	scanner.Start()
@@ -127,6 +132,9 @@ func TestPRFeedbackScannerService_StartStop(t *testing.T) {
 }
 
 func TestPRFeedbackScannerService_ScanForPRFeedback(t *testing.T) {
+	// Create test logger
+	logger := zap.NewNop()
+
 	// Create mock services
 	mockJiraService := &mocks.MockJiraService{
 		GetTicketFunc: func(key string) (*models.JiraTicketResponse, error) {
@@ -228,13 +236,14 @@ func TestPRFeedbackScannerService_ScanForPRFeedback(t *testing.T) {
 	config.Jira.GitPullRequestFieldName = "Git Pull Request"
 	config.TempDir = "/tmp/test"
 
-	// Create scanner service
+	// Create scanner service with actual PR review processor
 	scanner := &PRFeedbackScannerServiceImpl{
 		jiraService:       mockJiraService,
 		githubService:     mockGitHubService,
 		aiService:         mockAIService,
-		prReviewProcessor: NewPRReviewProcessor(mockJiraService, mockGitHubService, mockAIService, config),
+		prReviewProcessor: NewPRReviewProcessor(mockJiraService, mockGitHubService, mockAIService, config, logger),
 		config:            config,
+		logger:            logger,
 	}
 
 	// Test scanning for PR feedback

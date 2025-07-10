@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -13,6 +12,8 @@ import (
 	"strings"
 
 	"jira-ai-issue-solver/models"
+
+	"go.uber.org/zap"
 )
 
 // GitHubService defines the interface for interacting with GitHub
@@ -68,10 +69,11 @@ type GitHubServiceImpl struct {
 	config   *models.Config
 	client   *http.Client
 	executor models.CommandExecutor
+	logger   *zap.Logger
 }
 
 // NewGitHubService creates a new GitHubService
-func NewGitHubService(config *models.Config, executor ...models.CommandExecutor) GitHubService {
+func NewGitHubService(config *models.Config, logger *zap.Logger, executor ...models.CommandExecutor) GitHubService {
 	commandExecutor := exec.Command
 	if len(executor) > 0 {
 		commandExecutor = executor[0]
@@ -81,6 +83,7 @@ func NewGitHubService(config *models.Config, executor ...models.CommandExecutor)
 		config:   config,
 		client:   &http.Client{},
 		executor: commandExecutor,
+		logger:   logger,
 	}
 }
 
@@ -244,7 +247,7 @@ func (s *GitHubServiceImpl) CreateBranch(directory, branchName string) error {
 
 	if err := cmd.Run(); err == nil {
 		// Branch exists locally, delete it first
-		log.Printf("Branch %s already exists locally, deleting it", branchName)
+		s.logger.Info("Branch %s already exists locally, deleting it", zap.String("branchName", branchName))
 		cmd = s.executor("git", "branch", "-D", branchName)
 		cmd.Dir = directory
 
@@ -432,26 +435,26 @@ func (s *GitHubServiceImpl) CheckForkExists(owner, repo string) (exists bool, cl
 		return false, "", fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	log.Printf("repos: %v", repos)
+	s.logger.Info("repos", zap.Any("repos", repos))
 
 	// Check if any of the repositories is a fork of the target repository
 	targetFullName := fmt.Sprintf("%s/%s", owner, repo)
-	log.Printf("Looking for fork of: %s", targetFullName)
+	s.logger.Info("Looking for fork of", zap.String("targetFullName", targetFullName))
 
 	for _, r := range repos {
-		log.Printf("Checking repo: %s, isFork: %t, source: %v", r.Name, r.Fork, r.Source)
+		s.logger.Info("Checking repo", zap.String("repoName", r.Name), zap.Bool("isFork", r.Fork), zap.Any("source", r.Source))
 		if r.Fork && r.Source.FullName == targetFullName {
-			log.Printf("Found fork: %s", r.CloneURL)
+			s.logger.Info("Found fork", zap.String("cloneURL", r.CloneURL))
 			return true, r.CloneURL, nil
 		}
 		// Fallback: check if the repo name matches the target repo name
 		if r.Fork && r.Name == repo {
-			log.Printf("Found fork by name match: %s", r.CloneURL)
+			s.logger.Info("Found fork by name match", zap.String("cloneURL", r.CloneURL))
 			return true, r.CloneURL, nil
 		}
 	}
 
-	log.Printf("No fork found for: %s", targetFullName)
+	s.logger.Info("No fork found for", zap.String("targetFullName", targetFullName))
 	return false, "", nil
 }
 

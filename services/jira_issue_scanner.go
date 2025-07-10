@@ -2,10 +2,11 @@ package services
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"jira-ai-issue-solver/models"
+
+	"go.uber.org/zap"
 )
 
 // JiraIssueScannerService defines the interface for the Jira issue scanner
@@ -23,6 +24,7 @@ type JiraIssueScannerServiceImpl struct {
 	aiService       AIService
 	ticketProcessor TicketProcessor
 	config          *models.Config
+	logger          *zap.Logger
 	stopChan        chan struct{}
 	isRunning       bool
 }
@@ -33,8 +35,9 @@ func NewJiraIssueScannerService(
 	githubService GitHubService,
 	aiService AIService,
 	config *models.Config,
+	logger *zap.Logger,
 ) JiraIssueScannerService {
-	ticketProcessor := NewTicketProcessor(jiraService, githubService, aiService, config)
+	ticketProcessor := NewTicketProcessor(jiraService, githubService, aiService, config, logger)
 
 	return &JiraIssueScannerServiceImpl{
 		jiraService:     jiraService,
@@ -42,6 +45,7 @@ func NewJiraIssueScannerService(
 		aiService:       aiService,
 		ticketProcessor: ticketProcessor,
 		config:          config,
+		logger:          logger,
 		stopChan:        make(chan struct{}),
 		isRunning:       false,
 	}
@@ -50,12 +54,12 @@ func NewJiraIssueScannerService(
 // Start starts the periodic scanning
 func (s *JiraIssueScannerServiceImpl) Start() {
 	if s.isRunning {
-		log.Println("Jira issue scanner is already running")
+		s.logger.Info("Jira issue scanner is already running")
 		return
 	}
 
 	s.isRunning = true
-	log.Println("Starting Jira issue scanner...")
+	s.logger.Info("Starting Jira issue scanner...")
 
 	go func() {
 		ticker := time.NewTicker(time.Duration(s.config.Jira.IntervalSeconds) * time.Second)
@@ -69,7 +73,7 @@ func (s *JiraIssueScannerServiceImpl) Start() {
 			case <-ticker.C:
 				s.scanForTickets()
 			case <-s.stopChan:
-				log.Println("Stopping Jira issue scanner...")
+				s.logger.Info("Stopping Jira issue scanner...")
 				return
 			}
 		}
@@ -88,7 +92,7 @@ func (s *JiraIssueScannerServiceImpl) Stop() {
 
 // scanForTickets searches for tickets that need AI processing
 func (s *JiraIssueScannerServiceImpl) scanForTickets() {
-	log.Println("Scanning for tickets that need AI processing...")
+	s.logger.Info("Scanning for tickets that need AI processing...")
 
 	todoStatus := s.config.Jira.StatusTransitions.Todo
 
@@ -97,20 +101,20 @@ func (s *JiraIssueScannerServiceImpl) scanForTickets() {
 
 	searchResponse, err := s.jiraService.SearchTickets(jql)
 	if err != nil {
-		log.Printf("Failed to search for tickets: %v", err)
+		s.logger.Error("Failed to search for tickets", zap.Error(err))
 		return
 	}
 
 	if searchResponse.Total == 0 {
-		log.Println("No tickets found that need AI processing")
+		s.logger.Info("No tickets found that need AI processing")
 		return
 	}
 
-	log.Printf("Found %d tickets that need AI processing", searchResponse.Total)
+	s.logger.Info("Found tickets that need AI processing", zap.Int("count", searchResponse.Total))
 
 	// Process each ticket
 	for _, issue := range searchResponse.Issues {
-		log.Printf("Found ticket %s", issue.Key)
+		s.logger.Info("Found ticket", zap.String("ticket", issue.Key))
 
 		// Process all tickets returned by the search
 

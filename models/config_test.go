@@ -142,6 +142,9 @@ func TestConfig_validateStatusTransitions(t *testing.T) {
 func TestLoadConfig_WithStatusTransitions(t *testing.T) {
 	// Create a temporary config file
 	configContent := `
+logging:
+  level: info
+  format: console
 ai_provider: "claude"
 jira:
   status_transitions:
@@ -190,6 +193,9 @@ github:
 func TestLoadConfig_WithDefaultTargetBranch(t *testing.T) {
 	// Create a temporary config file without target_branch (should default to "main")
 	configContent := `
+logging:
+  level: info
+  format: console
 ai_provider: "claude"
 jira:
   status_transitions:

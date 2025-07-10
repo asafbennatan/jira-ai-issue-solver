@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"jira-ai-issue-solver/models"
+
+	"go.uber.org/zap"
 )
 
 func TestGeminiService_GenerateDocumentation(t *testing.T) {
@@ -66,6 +68,9 @@ Please read CONTRIBUTING.md for details.
 }
 
 func TestGeminiService_GenerateDocumentation_RealCLI(t *testing.T) {
+	// Create test logger
+	logger := zap.NewNop()
+
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "gemini-doc-test-real")
 	if err != nil {
@@ -102,7 +107,7 @@ Please read CONTRIBUTING.md for details.
 	config.Gemini.Model = "gemini-2.5-pro"
 
 	// Create a Gemini service
-	service := NewGeminiService(config)
+	service := NewGeminiService(config, logger)
 
 	// Test that GEMINI.md doesn't exist initially
 	geminiPath := filepath.Join(tempDir, "GEMINI.md")

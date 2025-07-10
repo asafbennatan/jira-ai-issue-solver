@@ -5,9 +5,14 @@ import (
 
 	"jira-ai-issue-solver/mocks"
 	"jira-ai-issue-solver/models"
+
+	"go.uber.org/zap"
 )
 
 func TestTicketProcessor_ProcessTicket(t *testing.T) {
+	// Create test logger
+	logger := zap.NewNop()
+
 	// Create mock services
 	mockJiraService := &mocks.MockJiraService{
 		GetTicketFunc: func(key string) (*models.JiraTicketResponse, error) {
@@ -61,7 +66,7 @@ func TestTicketProcessor_ProcessTicket(t *testing.T) {
 	config.TempDir = "/tmp/test"
 
 	// Create ticket processor
-	processor := NewTicketProcessor(mockJiraService, mockGitHubService, mockClaudeService, config)
+	processor := NewTicketProcessor(mockJiraService, mockGitHubService, mockClaudeService, config, logger)
 
 	// Test processing a ticket
 	err := processor.ProcessTicket("TEST-123")
@@ -71,6 +76,9 @@ func TestTicketProcessor_ProcessTicket(t *testing.T) {
 }
 
 func TestTicketProcessor_CreatePullRequestHeadFormat(t *testing.T) {
+	// Create test logger
+	logger := zap.NewNop()
+
 	// Test that the pull request creation uses the correct head format
 	config := &models.Config{}
 	config.GitHub.BotUsername = "test-bot"
@@ -132,12 +140,7 @@ func TestTicketProcessor_CreatePullRequestHeadFormat(t *testing.T) {
 	}
 	mockAI := &mocks.MockClaudeService{}
 
-	processor := &TicketProcessorImpl{
-		jiraService:   mockJira,
-		githubService: mockGitHub,
-		aiService:     mockAI,
-		config:        config,
-	}
+	processor := NewTicketProcessor(mockJira, mockGitHub, mockAI, config, logger)
 
 	// Process a ticket
 	err := processor.ProcessTicket("TEST-123")
@@ -224,7 +227,7 @@ func TestTicketProcessor_ConfigurableStatusTransitions(t *testing.T) {
 	config.TempDir = "/tmp/test"
 
 	// Create ticket processor
-	processor := NewTicketProcessor(mockJiraService, mockGitHubService, mockClaudeService, config)
+	processor := NewTicketProcessor(mockJiraService, mockGitHubService, mockClaudeService, config, zap.NewNop())
 
 	// Test processing a ticket
 	err := processor.ProcessTicket("TEST-123")

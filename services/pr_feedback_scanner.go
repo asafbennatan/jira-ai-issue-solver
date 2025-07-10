@@ -2,10 +2,11 @@ package services
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"jira-ai-issue-solver/models"
+
+	"go.uber.org/zap"
 )
 
 // PRFeedbackScannerService defines the interface for scanning tickets in "In Review" status
@@ -23,6 +24,7 @@ type PRFeedbackScannerServiceImpl struct {
 	aiService         AIService
 	prReviewProcessor PRReviewProcessor
 	config            *models.Config
+	logger            *zap.Logger
 	stopChan          chan struct{}
 	isRunning         bool
 }
@@ -33,8 +35,9 @@ func NewPRFeedbackScannerService(
 	githubService GitHubService,
 	aiService AIService,
 	config *models.Config,
+	logger *zap.Logger,
 ) PRFeedbackScannerService {
-	prReviewProcessor := NewPRReviewProcessor(jiraService, githubService, aiService, config)
+	prReviewProcessor := NewPRReviewProcessor(jiraService, githubService, aiService, config, logger)
 
 	return &PRFeedbackScannerServiceImpl{
 		jiraService:       jiraService,
@@ -42,6 +45,7 @@ func NewPRFeedbackScannerService(
 		aiService:         aiService,
 		prReviewProcessor: prReviewProcessor,
 		config:            config,
+		logger:            logger,
 		stopChan:          make(chan struct{}),
 		isRunning:         false,
 	}
@@ -50,12 +54,12 @@ func NewPRFeedbackScannerService(
 // Start starts the periodic scanning for PR feedback
 func (s *PRFeedbackScannerServiceImpl) Start() {
 	if s.isRunning {
-		log.Println("PR feedback scanner is already running")
+		s.logger.Info("PR feedback scanner is already running")
 		return
 	}
 
 	s.isRunning = true
-	log.Println("Starting PR feedback scanner...")
+	s.logger.Info("Starting PR feedback scanner...")
 
 	go func() {
 		ticker := time.NewTicker(time.Duration(s.config.Jira.IntervalSeconds) * time.Second)
@@ -69,7 +73,7 @@ func (s *PRFeedbackScannerServiceImpl) Start() {
 			case <-ticker.C:
 				s.scanForPRFeedback()
 			case <-s.stopChan:
-				log.Println("Stopping PR feedback scanner...")
+				s.logger.Info("Stopping PR feedback scanner...")
 				return
 			}
 		}
@@ -88,7 +92,7 @@ func (s *PRFeedbackScannerServiceImpl) Stop() {
 
 // scanForPRFeedback searches for tickets in "In Review" status that need PR feedback processing
 func (s *PRFeedbackScannerServiceImpl) scanForPRFeedback() {
-	log.Println("Scanning for tickets in 'In Review' status that need PR feedback processing...")
+	s.logger.Info("Scanning for tickets in 'In Review' status that need PR feedback processing...")
 
 	inReviewStatus := s.config.Jira.StatusTransitions.InReview
 
@@ -99,25 +103,25 @@ func (s *PRFeedbackScannerServiceImpl) scanForPRFeedback() {
 
 	searchResponse, err := s.jiraService.SearchTickets(jql)
 	if err != nil {
-		log.Printf("Failed to search for tickets in 'In Review' status: %v", err)
+		s.logger.Error("Failed to search for tickets in 'In Review' status", zap.Error(err))
 		return
 	}
 
 	if searchResponse.Total == 0 {
-		log.Println("No tickets found in 'In Review' status that need PR feedback processing")
+		s.logger.Info("No tickets found in 'In Review' status that need PR feedback processing")
 		return
 	}
 
-	log.Printf("Found %d tickets in 'In Review' status that need PR feedback processing", searchResponse.Total)
+	s.logger.Info("Found tickets in 'In Review' status that need PR feedback processing", zap.Int("count", searchResponse.Total))
 
 	// Process each ticket
 	for _, issue := range searchResponse.Issues {
-		log.Printf("Found ticket %s in 'In Review' status", issue.Key)
+		s.logger.Info("Found ticket in 'In Review' status", zap.String("ticket", issue.Key))
 
 		// Process the ticket asynchronously
 		go func(ticketKey string) {
 			if err := s.prReviewProcessor.ProcessPRReviewFeedback(ticketKey); err != nil {
-				log.Printf("Failed to process PR feedback for ticket %s: %v", ticketKey, err)
+				s.logger.Error("Failed to process PR feedback for ticket", zap.String("ticket", ticketKey), zap.Error(err))
 			}
 		}(issue.Key)
 	}

@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"jira-ai-issue-solver/models"
+
+	"go.uber.org/zap"
 )
 
 // execCommand is a variable that holds the exec.Command function
@@ -234,6 +236,9 @@ func TestExtractRepoInfo(t *testing.T) {
 
 // TestSwitchToBranch tests the SwitchToBranch method
 func TestSwitchToBranch(t *testing.T) {
+	// Create test logger
+	logger := zap.NewNop()
+
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "github-test")
 	if err != nil {
@@ -257,7 +262,7 @@ func TestSwitchToBranch(t *testing.T) {
 	config.GitHub.BotEmail = "test@example.com"
 
 	// Create GitHub service with mocked executor
-	githubService := NewGitHubService(config, mockExecutor)
+	githubService := NewGitHubService(config, logger, mockExecutor)
 
 	// Test switching to the test branch
 	err = githubService.SwitchToBranch(tempDir, "test-branch")
@@ -284,6 +289,9 @@ func TestSwitchToBranch(t *testing.T) {
 
 // TestSwitchToBranch_NonExistentBranch tests switching to a non-existent branch
 func TestSwitchToBranch_NonExistentBranch(t *testing.T) {
+	// Create test logger
+	logger := zap.NewNop()
+
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "github-test")
 	if err != nil {
@@ -311,7 +319,7 @@ func TestSwitchToBranch_NonExistentBranch(t *testing.T) {
 	config.GitHub.BotEmail = "test@example.com"
 
 	// Create GitHub service
-	githubService := NewGitHubService(config)
+	githubService := NewGitHubService(config, logger)
 
 	// Test switching to a non-existent branch
 	err = githubService.SwitchToBranch(tempDir, "non-existent-branch")

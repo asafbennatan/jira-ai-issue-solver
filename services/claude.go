@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +14,8 @@ import (
 	"time"
 
 	"jira-ai-issue-solver/models"
+
+	"go.uber.org/zap"
 )
 
 // getContentAsString safely converts content to string, handling both string and array types
@@ -58,10 +59,11 @@ type ClaudeService interface {
 type ClaudeServiceImpl struct {
 	config   *models.Config
 	executor models.CommandExecutor
+	logger   *zap.Logger
 }
 
 // NewClaudeService creates a new ClaudeService
-func NewClaudeService(config *models.Config, executor ...models.CommandExecutor) ClaudeService {
+func NewClaudeService(config *models.Config, logger *zap.Logger, executor ...models.CommandExecutor) ClaudeService {
 	commandExecutor := exec.Command
 	if len(executor) > 0 {
 		commandExecutor = executor[0]
@@ -69,6 +71,7 @@ func NewClaudeService(config *models.Config, executor ...models.CommandExecutor)
 	return &ClaudeServiceImpl{
 		config:   config,
 		executor: commandExecutor,
+		logger:   logger,
 	}
 }
 
@@ -82,11 +85,11 @@ func (s *ClaudeServiceImpl) GenerateDocumentation(repoDir string) error {
 	// Check if CLAUDE.md already exists
 	claudePath := filepath.Join(repoDir, "CLAUDE.md")
 	if _, err := os.Stat(claudePath); err == nil {
-		log.Printf("CLAUDE.md already exists, skipping generation")
+		s.logger.Info("CLAUDE.md already exists, skipping generation", zap.String("repo_dir", repoDir))
 		return nil
 	}
 
-	log.Printf("CLAUDE.md not found, generating documentation...")
+	s.logger.Info("CLAUDE.md not found, generating documentation", zap.String("repo_dir", repoDir))
 
 	// Create prompt for generating CLAUDE.md
 	prompt := `Create a comprehensive CLAUDE.md file in the root of the project that serves as an index and guide to all markdown documentation in this repository.
@@ -142,13 +145,13 @@ IMPORTANT: Verify that you actually created and wrote CLAUDE.md at the root of t
 	if response != nil && response.Message != nil && len(response.Message.Content) > 0 {
 		for _, contentItem := range response.Message.Content {
 			if contentItem.Type == "text" {
-				log.Printf("Documentation response:\t%s", contentItem.Text)
+				s.logger.Debug("Documentation response", zap.String("response", contentItem.Text))
 				break
 			}
 		}
 	}
 
-	log.Printf("Generated CLAUDE.md content")
+	s.logger.Info("Generated CLAUDE.md content", zap.String("repo_dir", repoDir))
 
 	// Instead of writing to the file, just ensure CLAUDE.md exists (create if missing, but don't write content)
 	// Check if CLAUDE.md exists, but do not create it.
@@ -158,14 +161,14 @@ IMPORTANT: Verify that you actually created and wrote CLAUDE.md at the root of t
 		return fmt.Errorf("failed to check CLAUDE.md: %w", err)
 	}
 
-	log.Printf("Successfully generated CLAUDE.md")
+	s.logger.Info("Successfully generated CLAUDE.md", zap.String("repo_dir", repoDir))
 	return nil
 }
 
 // GenerateCodeClaude generates code using Claude CLI
 func (s *ClaudeServiceImpl) GenerateCodeClaude(prompt string, repoDir string) (*models.ClaudeResponse, error) {
 	// Build command arguments based on configuration
-	log.Printf("Generating code for repo: %s", repoDir)
+	s.logger.Info("Generating code for repo", zap.String("repo_dir", repoDir))
 	args := []string{"--output-format", "stream-json", "--verbose", "-p", prompt}
 
 	// Add dangerous permissions flag if configured
@@ -193,8 +196,10 @@ func (s *ClaudeServiceImpl) GenerateCodeClaude(prompt string, repoDir string) (*
 	cmd.Dir = repoDir
 
 	// Print the actual command being executed
-	log.Printf("Executing: %s %s", s.config.Claude.CLIPath, strings.Join(args, " "))
-	log.Printf("Directory: %s", repoDir)
+	s.logger.Debug("Executing Claude CLI",
+		zap.String("command", s.config.Claude.CLIPath),
+		zap.Strings("args", args),
+		zap.String("directory", repoDir))
 
 	// Set environment variables
 	cmd.Env = os.Environ()
@@ -227,14 +232,14 @@ func (s *ClaudeServiceImpl) GenerateCodeClaude(prompt string, repoDir string) (*
 		defer wg.Done()
 		scanner := bufio.NewScanner(stderrPipe)
 		for scanner.Scan() {
-			log.Printf("stderr:\t%s", scanner.Text())
+			s.logger.Error("stderr", zap.String("line", scanner.Text()))
 		}
 	}()
 
 	// Log stdout and process stream-json concurrently
 	go func() {
 		defer wg.Done()
-		log.Printf("Starting Claude stream processing...")
+		s.logger.Info("Starting Claude stream processing...")
 		var finalResponse *models.ClaudeResponse
 		scanner := bufio.NewScanner(stdoutPipe)
 
@@ -246,7 +251,7 @@ func (s *ClaudeServiceImpl) GenerateCodeClaude(prompt string, repoDir string) (*
 
 			var response models.ClaudeResponse
 			if err := json.Unmarshal([]byte(line), &response); err != nil {
-				log.Printf("Failed to parse JSON line: %s, error: %v", line, err)
+				s.logger.Error("Failed to parse JSON line", zap.String("line", line), zap.Error(err))
 				continue
 			}
 
@@ -280,10 +285,10 @@ func (s *ClaudeServiceImpl) GenerateCodeClaude(prompt string, repoDir string) (*
 			// Log in concise format: Role: content (one line per content item with tab prefix)
 			if role != "" && len(contents) > 0 {
 				for _, content := range contents {
-					log.Printf("%s:\t%s", role, content)
+					s.logger.Debug("Claude response", zap.String("role", role), zap.String("content", content))
 				}
 			} else if response.IsError {
-				log.Printf("ERROR:\t%s", response.Result)
+				s.logger.Error("Claude error", zap.String("result", response.Result))
 			}
 
 			// Check if there was an error
@@ -310,13 +315,13 @@ func (s *ClaudeServiceImpl) GenerateCodeClaude(prompt string, repoDir string) (*
 			return
 		}
 
-		log.Printf("Stream processing complete.")
+		s.logger.Info("Stream processing complete.")
 		resultChan <- finalResponse
 	}()
 
 	// Wait for the command to finish or for the timeout to be reached
 	err = cmd.Wait()
-	log.Printf("Claude CLI finished")
+	s.logger.Info("Claude CLI finished")
 
 	// Wait for the logging goroutines to finish
 	// This ensures we capture all output before the function exits

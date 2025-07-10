@@ -2,11 +2,12 @@ package services
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"jira-ai-issue-solver/models"
+
+	"go.uber.org/zap"
 )
 
 // TicketProcessor defines the interface for processing Jira tickets
@@ -21,6 +22,7 @@ type TicketProcessorImpl struct {
 	githubService GitHubService
 	aiService     AIService
 	config        *models.Config
+	logger        *zap.Logger
 }
 
 // NewTicketProcessor creates a new TicketProcessor
@@ -29,30 +31,32 @@ func NewTicketProcessor(
 	githubService GitHubService,
 	aiService AIService,
 	config *models.Config,
+	logger *zap.Logger,
 ) TicketProcessor {
 	return &TicketProcessorImpl{
 		jiraService:   jiraService,
 		githubService: githubService,
 		aiService:     aiService,
 		config:        config,
+		logger:        logger,
 	}
 }
 
 // ProcessTicket processes a Jira ticket
 func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
-	log.Printf("Processing ticket %s", ticketKey)
+	p.logger.Info("Processing ticket", zap.String("ticket", ticketKey))
 
 	// Get the ticket details
 	ticket, err := p.jiraService.GetTicket(ticketKey)
 	if err != nil {
-		log.Printf("failed to get ticket details: %v", err)
+		p.logger.Error("Failed to get ticket details", zap.String("ticket", ticketKey), zap.Error(err))
 		p.handleFailure(ticketKey, fmt.Sprintf("Failed to get ticket details: %v", err))
 		return err
 	}
 
 	// Get the repository URL from the component mapping
 	if len(ticket.Fields.Components) == 0 {
-		log.Printf("no components found on ticket")
+		p.logger.Warn("No components found on ticket", zap.String("ticket", ticketKey))
 		p.handleFailure(ticketKey, "No components found on ticket")
 		return fmt.Errorf("no components found on ticket")
 	}
@@ -61,32 +65,49 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 	firstComponent := ticket.Fields.Components[0].Name
 	repoURL, ok := p.config.ComponentToRepo[firstComponent]
 	if !ok || repoURL == "" {
-		log.Printf("no repository mapping found for component: %s", firstComponent)
+		p.logger.Error("No repository mapping found for component",
+			zap.String("ticket", ticketKey),
+			zap.String("component", firstComponent))
 		p.handleFailure(ticketKey, fmt.Sprintf("No repository mapping found for component: %s", firstComponent))
 		return fmt.Errorf("no repository mapping found for component: %s", firstComponent)
 	}
-	log.Printf("found repository mapping for component: %s : repo url: %s", firstComponent, repoURL)
+	p.logger.Info("Found repository mapping for component",
+		zap.String("ticket", ticketKey),
+		zap.String("component", firstComponent),
+		zap.String("repo_url", repoURL))
 
 	// Update the ticket status to the configured "In Progress" status
 	err = p.jiraService.UpdateTicketStatus(ticketKey, p.config.Jira.StatusTransitions.InProgress)
 	if err != nil {
-		log.Printf("failed to update ticket status: %v", err)
+		p.logger.Error("Failed to update ticket status",
+			zap.String("ticket", ticketKey),
+			zap.Error(err))
 		// Continue processing even if status update fails
 	}
 
 	// Extract owner and repo from the repository URL
 	owner, repo, err := ExtractRepoInfo(repoURL)
 	if err != nil {
-		log.Printf("failed to extract repo info: %v", err)
+		p.logger.Error("Failed to extract repo info",
+			zap.String("ticket", ticketKey),
+			zap.String("repo_url", repoURL),
+			zap.Error(err))
 		p.handleFailure(ticketKey, fmt.Sprintf("Failed to extract repo info: %v", err))
 		return err
 	}
-	log.Printf("owner: %s, repo: %s", owner, repo)
+	p.logger.Debug("Extracted repo info",
+		zap.String("ticket", ticketKey),
+		zap.String("owner", owner),
+		zap.String("repo", repo))
 
 	// Check if a fork already exists
 	exists, forkURL, err := p.githubService.CheckForkExists(owner, repo)
 	if err != nil {
-		log.Printf("failed to check if fork exists: %v", err)
+		p.logger.Error("Failed to check if fork exists",
+			zap.String("ticket", ticketKey),
+			zap.String("owner", owner),
+			zap.String("repo", repo),
+			zap.Error(err))
 		p.handleFailure(ticketKey, fmt.Sprintf("Failed to check if fork exists: %v", err))
 		return err
 	}
@@ -95,32 +116,46 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 		// Create a fork
 		forkURL, err = p.githubService.ForkRepository(owner, repo)
 		if err != nil {
-			log.Printf("failed to create fork: %v", err)
+			p.logger.Error("Failed to create fork",
+				zap.String("ticket", ticketKey),
+				zap.String("owner", owner),
+				zap.String("repo", repo),
+				zap.Error(err))
 			p.handleFailure(ticketKey, fmt.Sprintf("Failed to create fork: %v", err))
 			return err
 		}
-		log.Printf("fork created successfully, waiting for fork to be ready...")
+		p.logger.Info("Fork created successfully, waiting for fork to be ready",
+			zap.String("ticket", ticketKey),
+			zap.String("fork_url", forkURL))
 
 		// Wait for the fork to be ready by checking if it exists
 		for i := 0; i < 10; i++ { // Try up to 10 times (50 seconds total)
 			exists, forkURL, err = p.githubService.CheckForkExists(owner, repo)
 			if err != nil {
-				log.Printf("failed to check fork readiness (attempt %d): %v", i+1, err)
+				p.logger.Warn("Failed to check fork readiness",
+					zap.String("ticket", ticketKey),
+					zap.Int("attempt", i+1),
+					zap.Error(err))
 				time.Sleep(5 * time.Second)
 				continue
 			}
 
 			if exists {
-				log.Printf("fork is ready after %d attempts", i+1)
+				p.logger.Info("Fork is ready",
+					zap.String("ticket", ticketKey),
+					zap.Int("attempts", i+1))
 				break
 			}
 
-			log.Printf("fork not ready yet, waiting... (attempt %d)", i+1)
+			p.logger.Debug("Fork not ready yet, waiting",
+				zap.String("ticket", ticketKey),
+				zap.Int("attempt", i+1))
 			time.Sleep(5 * time.Second)
 		}
 
 		if !exists {
-			log.Printf("fork failed to become ready after multiple attempts")
+			p.logger.Error("Fork failed to become ready after multiple attempts",
+				zap.String("ticket", ticketKey))
 			p.handleFailure(ticketKey, "Fork failed to become ready after multiple attempts")
 			return fmt.Errorf("fork failed to become ready after multiple attempts")
 		}
@@ -130,7 +165,11 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 	repoDir := strings.Join([]string{p.config.TempDir, ticketKey}, "/")
 	err = p.githubService.CloneRepository(forkURL, repoDir)
 	if err != nil {
-		log.Printf("failed to clone repository: %v", err)
+		p.logger.Error("Failed to clone repository",
+			zap.String("ticket", ticketKey),
+			zap.String("fork_url", forkURL),
+			zap.String("repo_dir", repoDir),
+			zap.Error(err))
 		p.handleFailure(ticketKey, fmt.Sprintf("Failed to clone repository: %v", err))
 		return err
 	}
@@ -138,7 +177,10 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 	// Switch to the target branch if we're not already on it
 	err = p.githubService.SwitchToTargetBranch(repoDir)
 	if err != nil {
-		log.Printf("failed to switch to target branch: %v", err)
+		p.logger.Error("Failed to switch to target branch",
+			zap.String("ticket", ticketKey),
+			zap.String("repo_dir", repoDir),
+			zap.Error(err))
 		p.handleFailure(ticketKey, fmt.Sprintf("Failed to switch to target branch: %v", err))
 		return err
 	}
@@ -147,7 +189,11 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 	branchName := ticketKey
 	err = p.githubService.CreateBranch(repoDir, branchName)
 	if err != nil {
-		log.Printf("failed to create branch: %v", err)
+		p.logger.Error("Failed to create branch",
+			zap.String("ticket", ticketKey),
+			zap.String("repo_dir", repoDir),
+			zap.String("branch_name", branchName),
+			zap.Error(err))
 		p.handleFailure(ticketKey, fmt.Sprintf("Failed to create branch: %v", err))
 		return err
 	}
@@ -155,7 +201,10 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 	// Generate documentation file (CLAUDE.md or GEMINI.md) if it doesn't exist
 	err = p.aiService.GenerateDocumentation(repoDir)
 	if err != nil {
-		log.Printf("failed to generate documentation: %v", err)
+		p.logger.Warn("Failed to generate documentation",
+			zap.String("ticket", ticketKey),
+			zap.String("repo_dir", repoDir),
+			zap.Error(err))
 		// Continue processing even if documentation generation fails
 	}
 
@@ -165,7 +214,10 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 	// Run AI service to generate code changes
 	_, err = p.aiService.GenerateCode(prompt, repoDir)
 	if err != nil {
-		log.Printf("failed to generate code changes: %v", err)
+		p.logger.Error("Failed to generate code changes",
+			zap.String("ticket", ticketKey),
+			zap.String("repo_dir", repoDir),
+			zap.Error(err))
 		p.handleFailure(ticketKey, fmt.Sprintf("Failed to generate code changes: %v", err))
 		return err
 	}
@@ -173,7 +225,10 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 	// Commit the changes
 	err = p.githubService.CommitChanges(repoDir, fmt.Sprintf("%s: %s", ticketKey, ticket.Fields.Summary))
 	if err != nil {
-		log.Printf("failed to commit changes: %v", err)
+		p.logger.Error("Failed to commit changes",
+			zap.String("ticket", ticketKey),
+			zap.String("repo_dir", repoDir),
+			zap.Error(err))
 		p.handleFailure(ticketKey, fmt.Sprintf("Failed to commit changes: %v", err))
 		return err
 	}
@@ -181,7 +236,11 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 	// Push the changes
 	err = p.githubService.PushChanges(repoDir, branchName)
 	if err != nil {
-		log.Printf("failed to push changes: %v", err)
+		p.logger.Error("Failed to push changes",
+			zap.String("ticket", ticketKey),
+			zap.String("repo_dir", repoDir),
+			zap.String("branch_name", branchName),
+			zap.Error(err))
 		p.handleFailure(ticketKey, fmt.Sprintf("Failed to push changes: %v", err))
 		return err
 	}
@@ -195,38 +254,53 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 	head := fmt.Sprintf("%s:%s", p.config.GitHub.BotUsername, branchName)
 	pr, err := p.githubService.CreatePullRequest(owner, repo, prTitle, prBody, head, p.config.GitHub.TargetBranch)
 	if err != nil {
-		log.Printf("failed to create pull request: %v", err)
+		p.logger.Error("Failed to create pull request",
+			zap.String("ticket", ticketKey),
+			zap.String("owner", owner),
+			zap.String("repo", repo),
+			zap.String("head", head),
+			zap.Error(err))
 		p.handleFailure(ticketKey, fmt.Sprintf("Failed to create pull request: %v", err))
 		return err
 	}
 
-	// Update the Git Pull Request field if configured
+	// Update the Git Pull Request field on the Jira ticket
 	if p.config.Jira.GitPullRequestFieldName != "" {
 		err = p.jiraService.UpdateTicketFieldByName(ticketKey, p.config.Jira.GitPullRequestFieldName, pr.HTMLURL)
 		if err != nil {
-			log.Printf("failed to update Git Pull Request field: %v", err)
-			// Continue even if field update fails
+			p.logger.Error("Failed to update Git Pull Request field",
+				zap.String("ticket", ticketKey),
+				zap.String("pr_url", pr.HTMLURL),
+				zap.Error(err))
+			// Continue processing even if field update fails
 		} else {
-			log.Printf("Successfully updated Git Pull Request field with URL: %s", pr.HTMLURL)
+			p.logger.Info("Successfully updated Git Pull Request field",
+				zap.String("ticket", ticketKey),
+				zap.String("pr_url", pr.HTMLURL))
 		}
 	}
 
-	// Add a comment to the ticket with the PR link
-	comment := fmt.Sprintf("AI has created a pull request to address this issue: %s", pr.HTMLURL)
+	// Add a comment to the ticket
+	comment := fmt.Sprintf("AI-generated pull request created: %s", pr.HTMLURL)
 	err = p.jiraService.AddComment(ticketKey, comment)
 	if err != nil {
-		log.Printf("failed to add comment: %v", err)
-		// Continue even if comment fails
+		p.logger.Error("Failed to add comment",
+			zap.String("ticket", ticketKey),
+			zap.String("comment", comment),
+			zap.Error(err))
+		// Continue processing even if comment fails
 	}
 
 	// Update the ticket status to the configured "In Review" status
 	err = p.jiraService.UpdateTicketStatus(ticketKey, p.config.Jira.StatusTransitions.InReview)
 	if err != nil {
-		log.Printf("failed to update ticket status: %v", err)
-		// Continue even if status update fails
+		p.logger.Error("Failed to update ticket status",
+			zap.String("ticket", ticketKey),
+			zap.Error(err))
+		// Continue processing even if status update fails
 	}
 
-	log.Printf("Successfully processed ticket %s", ticketKey)
+	p.logger.Info("Successfully processed ticket", zap.String("ticket", ticketKey))
 	return nil
 }
 
@@ -236,10 +310,10 @@ func (p *TicketProcessorImpl) handleFailure(ticketKey, errorMessage string) {
 	if !p.config.Jira.DisableErrorComments {
 		err := p.jiraService.AddComment(ticketKey, fmt.Sprintf("AI failed to process this ticket: %s", errorMessage))
 		if err != nil {
-			log.Printf("failed to add comment: %v", err)
+			p.logger.Error("Failed to add error comment", zap.String("ticket", ticketKey), zap.Error(err))
 		}
 	} else {
-		log.Printf("Error commenting disabled, not adding error comment for ticket %s: %s", ticketKey, errorMessage)
+		p.logger.Warn("Error commenting disabled, not adding error comment for ticket", zap.String("ticket", ticketKey), zap.String("error_message", errorMessage))
 	}
 
 }

@@ -2,10 +2,92 @@ package models
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// LogLevel represents the logging level
+type LogLevel string
+
+const (
+	LogLevelDebug LogLevel = "debug"
+	LogLevelInfo  LogLevel = "info"
+	LogLevelWarn  LogLevel = "warn"
+	LogLevelError LogLevel = "error"
+)
+
+// LogFormat represents the logging format
+type LogFormat string
+
+const (
+	LogFormatConsole LogFormat = "console"
+	LogFormatJSON    LogFormat = "json"
+)
+
+// String returns the string representation of LogLevel
+func (l LogLevel) String() string {
+	return string(l)
+}
+
+// String returns the string representation of LogFormat
+func (f LogFormat) String() string {
+	return string(f)
+}
+
+// IsValid checks if the LogLevel is valid
+func (l LogLevel) IsValid() bool {
+	switch l {
+	case LogLevelDebug, LogLevelInfo, LogLevelWarn, LogLevelError:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsValid checks if the LogFormat is valid
+func (f LogFormat) IsValid() bool {
+	switch f {
+	case LogFormatConsole, LogFormatJSON:
+		return true
+	default:
+		return false
+	}
+}
+
+// UnmarshalYAML implements custom unmarshaling for LogLevel
+func (l *LogLevel) UnmarshalYAML(value *yaml.Node) error {
+	var str string
+	if err := value.Decode(&str); err != nil {
+		return err
+	}
+
+	level := LogLevel(strings.ToLower(str))
+	if !level.IsValid() {
+		return fmt.Errorf("invalid log level: %s. Valid options are: debug, info, warn, error", str)
+	}
+
+	*l = level
+	return nil
+}
+
+// UnmarshalYAML implements custom unmarshaling for LogFormat
+func (f *LogFormat) UnmarshalYAML(value *yaml.Node) error {
+	var str string
+	if err := value.Decode(&str); err != nil {
+		return err
+	}
+
+	format := LogFormat(strings.ToLower(str))
+	if !format.IsValid() {
+		return fmt.Errorf("invalid log format: %s. Valid options are: console, json", str)
+	}
+
+	*f = format
+	return nil
+}
 
 // Config represents the application configuration
 type Config struct {
@@ -13,6 +95,12 @@ type Config struct {
 	Server struct {
 		Port int `yaml:"port" default:"8080"`
 	} `yaml:"server"`
+
+	// Logging configuration
+	Logging struct {
+		Level  LogLevel  `yaml:"level" default:"info"`
+		Format LogFormat `yaml:"format" default:"console"`
+	} `yaml:"logging"`
 
 	// Jira configuration
 	Jira struct {
@@ -96,6 +184,11 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, err
 	}
 
+	// Validate logging configuration
+	if err := config.validateLogging(); err != nil {
+		return nil, err
+	}
+
 	return &config, nil
 }
 
@@ -117,6 +210,17 @@ func (c *Config) validateStatusTransitions() error {
 	}
 	if c.Jira.StatusTransitions.InReview == "" {
 		return errors.New("jira.status_transitions.in_review cannot be empty")
+	}
+	return nil
+}
+
+// validateLogging ensures logging configuration is valid
+func (c *Config) validateLogging() error {
+	if !c.Logging.Level.IsValid() {
+		return fmt.Errorf("invalid log level: %s. Valid options are: debug, info, warn, error", c.Logging.Level)
+	}
+	if !c.Logging.Format.IsValid() {
+		return fmt.Errorf("invalid log format: %s. Valid options are: console, json", c.Logging.Format)
 	}
 	return nil
 }
