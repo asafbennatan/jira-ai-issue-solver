@@ -16,6 +16,12 @@ type MockGitHubService struct {
 	ResetForkFunc            func(forkCloneURL, directory string) error
 	SyncForkWithUpstreamFunc func(owner, repo string) error
 	SwitchToTargetBranchFunc func(directory string) error
+	SwitchToBranchFunc       func(directory, branchName string) error
+	PullChangesFunc          func(directory, branchName string) error
+	AddPRCommentFunc         func(owner, repo string, prNumber int, body string) error
+	ListPRCommentsFunc       func(owner, repo string, prNumber int) ([]models.GitHubPRComment, error)
+	GetPRDetailsFunc         func(owner, repo string, prNumber int) (*models.GitHubPRDetails, error)
+	ListPRReviewsFunc        func(owner, repo string, prNumber int) ([]models.GitHubReview, error)
 }
 
 // CloneRepository is the mock implementation of GitHubService's CloneRepository method
@@ -96,4 +102,52 @@ func (m *MockGitHubService) SwitchToTargetBranch(directory string) error {
 		return m.SwitchToTargetBranchFunc(directory)
 	}
 	return nil
+}
+
+// SwitchToBranch is the mock implementation of GitHubService's SwitchToBranch method
+func (m *MockGitHubService) SwitchToBranch(directory, branchName string) error {
+	if m.SwitchToBranchFunc != nil {
+		return m.SwitchToBranchFunc(directory, branchName)
+	}
+	return nil
+}
+
+// PullChanges is the mock implementation of GitHubService's PullChanges method
+func (m *MockGitHubService) PullChanges(directory, branchName string) error {
+	if m.PullChangesFunc != nil {
+		return m.PullChangesFunc(directory, branchName)
+	}
+	return nil
+}
+
+// GetPRDetails is the mock implementation of GitHubService's GetPRDetails method
+func (m *MockGitHubService) GetPRDetails(owner, repo string, prNumber int) (*models.GitHubPRDetails, error) {
+	if m.GetPRDetailsFunc != nil {
+		return m.GetPRDetailsFunc(owner, repo, prNumber)
+	}
+	return nil, nil
+}
+
+// ListPRReviews is the mock implementation of GitHubService's ListPRReviews method
+func (m *MockGitHubService) ListPRReviews(owner, repo string, prNumber int) ([]models.GitHubReview, error) {
+	if m.ListPRReviewsFunc != nil {
+		return m.ListPRReviewsFunc(owner, repo, prNumber)
+	}
+	return nil, nil
+}
+
+// AddPRComment is the mock implementation of GitHubService's AddPRComment method
+func (m *MockGitHubService) AddPRComment(owner, repo string, prNumber int, body string) error {
+	if m.AddPRCommentFunc != nil {
+		return m.AddPRCommentFunc(owner, repo, prNumber, body)
+	}
+	return nil
+}
+
+// ListPRComments is the mock implementation of GitHubService's ListPRComments method
+func (m *MockGitHubService) ListPRComments(owner, repo string, prNumber int) ([]models.GitHubPRComment, error) {
+	if m.ListPRCommentsFunc != nil {
+		return m.ListPRCommentsFunc(owner, repo, prNumber)
+	}
+	return nil, nil
 }

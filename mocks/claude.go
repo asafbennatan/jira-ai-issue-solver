@@ -2,20 +2,19 @@ package mocks
 
 import (
 	"fmt"
+	"jira-ai-issue-solver/models"
 	"os"
 	"path/filepath"
 	"time"
-
-	"jira-ai-issue-solver/services"
 )
 
 // MockClaudeService is a mock implementation of the ClaudeService interface
 type MockClaudeService struct {
-	GenerateCodeFunc func(prompt string, repoDir string) (*services.ClaudeResponse, error)
+	GenerateCodeFunc func(prompt string, repoDir string) (*models.ClaudeResponse, error)
 }
 
 // GenerateCode is the mock implementation of ClaudeService's GenerateCode method
-func (m *MockClaudeService) GenerateCode(prompt string, repoDir string) (*services.ClaudeResponse, error) {
+func (m *MockClaudeService) GenerateCode(prompt string, repoDir string) (interface{}, error) {
 	if m.GenerateCodeFunc != nil {
 		return m.GenerateCodeFunc(prompt, repoDir)
 	}
@@ -27,7 +26,7 @@ func (m *MockClaudeService) GenerateCode(prompt string, repoDir string) (*servic
 	}
 
 	// Return a mock response describing what was "generated"
-	return &services.ClaudeResponse{
+	return &models.ClaudeResponse{
 		Type:          "completion",
 		Subtype:       "text",
 		IsError:       false,
@@ -46,7 +45,7 @@ Generated mock implementation for the requested feature.
 The implementation includes comprehensive unit tests that cover all edge cases.`,
 		SessionID:    "mock-session-" + fmt.Sprintf("%d", time.Now().Unix()),
 		TotalCostUsd: 0.0025,
-		Usage: services.ClaudeUsage{
+		Usage: models.ClaudeUsage{
 			InputTokens:  250,
 			OutputTokens: 150,
 			ServiceTier:  "claude-3-sonnet-20240229",

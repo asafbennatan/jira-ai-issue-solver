@@ -9,12 +9,16 @@ A Go application that automatically processes Jira tickets labeled with "good-fo
 - **GitHub Integration**: Creates forks, branches, and pull requests automatically
 - **Jira Integration**: Updates ticket status and adds comments with PR links
 - **Status Management**: Automatically manages ticket status transitions during processing
+- **PR Feedback Processing**: Automatically processes PR review feedback and applies fixes
 
 ## How It Works
 
 ### Periodic Scanning
 
-The service runs a periodic scanner that:
+The service runs two periodic scanners:
+
+#### 1. Ticket Processing Scanner
+This scanner processes new tickets:
 
 1. Searches for Jira tickets where the configured Jira user is set as a contributor that are in the configured "todo" status
 2. Processes each ticket by updating status to "In Progress"
@@ -24,6 +28,16 @@ The service runs a periodic scanner that:
 6. Commits the changes and pushes the branch to the forked repository
 7. Creates a Pull Request from the bot's fork to the original repository
 8. Adds a comment to the ticket with a link to the PR and updates the ticket status to "In Review"
+
+#### 2. PR Feedback Scanner
+This scanner processes PR review feedback:
+
+1. Searches for Jira tickets assigned to the current user that are in "In Review" status and have a PR URL set
+2. Checks the associated GitHub PR for "request changes" reviews
+3. Collects all feedback from reviews and comments
+4. Creates a new branch with fixes based on the feedback
+5. Generates a new PR with the applied fixes
+6. Updates the original ticket with the new PR information
 
 ### Configuration
 
@@ -82,6 +96,7 @@ jira:
   api_token: your-jira-api-token
   interval_seconds: 300
   disable_error_comments: false
+  git_pull_request_field_name: "Git Pull Request"  # Required for PR feedback processing
   status_transitions:
     todo: "To Do"
     in_progress: "In Progress"
@@ -158,6 +173,47 @@ The application will:
 1. Look at the first component assigned to a Jira ticket
 2. Use the component name to find the corresponding repository URL
 3. Process the ticket using that repository
+
+### PR Feedback Processing
+
+The application includes automatic PR feedback processing functionality:
+
+#### Setup Requirements
+
+1. **Custom Field Configuration**: You must configure a custom field in Jira to store the PR URL:
+   ```yaml
+   jira:
+     git_pull_request_field_name: "Git Pull Request"  # Replace with your actual field name
+   ```
+
+2. **Field ID Discovery**: To find your custom field ID:
+   - Go to Jira Administration → Issues → Custom fields
+   - Find your PR URL field and note the field ID (e.g., `customfield_10001`)
+
+#### How PR Feedback Processing Works
+
+1. **Automatic Detection**: The scanner automatically detects tickets in "In Review" status that have a PR URL set
+2. **Review Analysis**: It checks the GitHub PR for any "request changes" reviews
+3. **Feedback Collection**: All feedback from reviews and comments is collected
+4. **AI-Powered Fixes**: The AI service analyzes the feedback and generates code fixes
+5. **Direct PR Update**: Changes are pushed directly to the existing PR branch, updating the original PR
+6. **Automatic Updates**: The original PR is automatically updated with the feedback fixes
+
+#### Supported Feedback Types
+
+- **Review Comments**: Comments from PR reviews with "request changes" status
+- **Line Comments**: Inline comments on specific code lines
+- **General Comments**: General PR comments
+- **File Changes**: Information about which files were modified
+
+#### Example Workflow
+
+1. AI creates initial PR for a ticket
+2. Reviewer requests changes on the PR
+3. PR feedback scanner detects the "request changes" review
+4. AI analyzes the feedback and applies fixes to the existing PR branch
+5. Original PR is automatically updated with the fixes
+6. Process continues until the PR is approved
 
 ### Running the Application
 

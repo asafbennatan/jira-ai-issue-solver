@@ -2,16 +2,15 @@ package mocks
 
 import (
 	"fmt"
+	"jira-ai-issue-solver/models"
 	"os"
 	"path/filepath"
 	"time"
-
-	"jira-ai-issue-solver/services"
 )
 
 // MockGeminiService is a mock implementation of the GeminiService interface
 type MockGeminiService struct {
-	GenerateCodeFunc func(prompt string, repoDir string) (*services.GeminiResponse, error)
+	GenerateCodeFunc func(prompt string, repoDir string) (*models.GeminiResponse, error)
 }
 
 // GenerateCode is the mock implementation of GeminiService's GenerateCode method
@@ -27,7 +26,7 @@ func (m *MockGeminiService) GenerateCode(prompt string, repoDir string) (interfa
 	}
 
 	// Return a mock response describing what was "generated"
-	return &services.GeminiResponse{
+	return &models.GeminiResponse{
 		Type:    "assistant",
 		IsError: false,
 		Result: `## Summary
@@ -42,11 +41,11 @@ Generated mock implementation for the requested feature.
 The implementation includes comprehensive unit tests that cover all edge cases.`,
 		SessionID:    "mock-session-" + fmt.Sprintf("%d", time.Now().Unix()),
 		TotalCostUsd: 0.0025,
-		Usage: services.GeminiUsage{
+		Usage: models.GeminiUsage{
 			InputTokens:  250,
 			OutputTokens: 150,
 		},
-		Message: &services.GeminiMessage{
+		Message: &models.GeminiMessage{
 			Type:    "message",
 			Role:    "assistant",
 			Model:   "gemini-2.5-pro",

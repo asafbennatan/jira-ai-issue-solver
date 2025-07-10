@@ -15,12 +15,13 @@ func TestConfig_validateStatusTransitions(t *testing.T) {
 			name: "valid status transitions",
 			config: Config{
 				Jira: struct {
-					BaseURL              string `yaml:"base_url"`
-					Username             string `yaml:"username"`
-					APIToken             string `yaml:"api_token"`
-					IntervalSeconds      int    `yaml:"interval_seconds" default:"300"`
-					DisableErrorComments bool   `yaml:"disable_error_comments" default:"false"`
-					StatusTransitions    struct {
+					BaseURL                 string `yaml:"base_url"`
+					Username                string `yaml:"username"`
+					APIToken                string `yaml:"api_token"`
+					IntervalSeconds         int    `yaml:"interval_seconds" default:"300"`
+					DisableErrorComments    bool   `yaml:"disable_error_comments" default:"false"`
+					GitPullRequestFieldName string `yaml:"git_pull_request_field_name"`
+					StatusTransitions       struct {
 						Todo       string `yaml:"todo" default:"To Do"`
 						InProgress string `yaml:"in_progress" default:"In Progress"`
 						InReview   string `yaml:"in_review" default:"In Review"`
@@ -43,12 +44,13 @@ func TestConfig_validateStatusTransitions(t *testing.T) {
 			name: "empty todo status",
 			config: Config{
 				Jira: struct {
-					BaseURL              string `yaml:"base_url"`
-					Username             string `yaml:"username"`
-					APIToken             string `yaml:"api_token"`
-					IntervalSeconds      int    `yaml:"interval_seconds" default:"300"`
-					DisableErrorComments bool   `yaml:"disable_error_comments" default:"false"`
-					StatusTransitions    struct {
+					BaseURL                 string `yaml:"base_url"`
+					Username                string `yaml:"username"`
+					APIToken                string `yaml:"api_token"`
+					IntervalSeconds         int    `yaml:"interval_seconds" default:"300"`
+					DisableErrorComments    bool   `yaml:"disable_error_comments" default:"false"`
+					GitPullRequestFieldName string `yaml:"git_pull_request_field_name"`
+					StatusTransitions       struct {
 						Todo       string `yaml:"todo" default:"To Do"`
 						InProgress string `yaml:"in_progress" default:"In Progress"`
 						InReview   string `yaml:"in_review" default:"In Review"`
@@ -71,12 +73,13 @@ func TestConfig_validateStatusTransitions(t *testing.T) {
 			name: "empty in_progress status",
 			config: Config{
 				Jira: struct {
-					BaseURL              string `yaml:"base_url"`
-					Username             string `yaml:"username"`
-					APIToken             string `yaml:"api_token"`
-					IntervalSeconds      int    `yaml:"interval_seconds" default:"300"`
-					DisableErrorComments bool   `yaml:"disable_error_comments" default:"false"`
-					StatusTransitions    struct {
+					BaseURL                 string `yaml:"base_url"`
+					Username                string `yaml:"username"`
+					APIToken                string `yaml:"api_token"`
+					IntervalSeconds         int    `yaml:"interval_seconds" default:"300"`
+					DisableErrorComments    bool   `yaml:"disable_error_comments" default:"false"`
+					GitPullRequestFieldName string `yaml:"git_pull_request_field_name"`
+					StatusTransitions       struct {
 						Todo       string `yaml:"todo" default:"To Do"`
 						InProgress string `yaml:"in_progress" default:"In Progress"`
 						InReview   string `yaml:"in_review" default:"In Review"`
@@ -99,12 +102,13 @@ func TestConfig_validateStatusTransitions(t *testing.T) {
 			name: "empty in_review status",
 			config: Config{
 				Jira: struct {
-					BaseURL              string `yaml:"base_url"`
-					Username             string `yaml:"username"`
-					APIToken             string `yaml:"api_token"`
-					IntervalSeconds      int    `yaml:"interval_seconds" default:"300"`
-					DisableErrorComments bool   `yaml:"disable_error_comments" default:"false"`
-					StatusTransitions    struct {
+					BaseURL                 string `yaml:"base_url"`
+					Username                string `yaml:"username"`
+					APIToken                string `yaml:"api_token"`
+					IntervalSeconds         int    `yaml:"interval_seconds" default:"300"`
+					DisableErrorComments    bool   `yaml:"disable_error_comments" default:"false"`
+					GitPullRequestFieldName string `yaml:"git_pull_request_field_name"`
+					StatusTransitions       struct {
 						Todo       string `yaml:"todo" default:"To Do"`
 						InProgress string `yaml:"in_progress" default:"In Progress"`
 						InReview   string `yaml:"in_review" default:"In Review"`
@@ -138,6 +142,7 @@ func TestConfig_validateStatusTransitions(t *testing.T) {
 func TestLoadConfig_WithStatusTransitions(t *testing.T) {
 	// Create a temporary config file
 	configContent := `
+ai_provider: "claude"
 jira:
   status_transitions:
     todo: "To Do"
@@ -185,6 +190,7 @@ github:
 func TestLoadConfig_WithDefaultTargetBranch(t *testing.T) {
 	// Create a temporary config file without target_branch (should default to "main")
 	configContent := `
+ai_provider: "claude"
 jira:
   status_transitions:
     todo: "To Do"

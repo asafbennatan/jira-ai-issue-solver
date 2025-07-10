@@ -201,8 +201,8 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 	}
 
 	// Update the Git Pull Request field if configured
-	if p.config.Jira.GitPullRequestFieldID != "" {
-		err = p.jiraService.UpdateTicketField(ticketKey, p.config.Jira.GitPullRequestFieldID, pr.HTMLURL)
+	if p.config.Jira.GitPullRequestFieldName != "" {
+		err = p.jiraService.UpdateTicketFieldByName(ticketKey, p.config.Jira.GitPullRequestFieldName, pr.HTMLURL)
 		if err != nil {
 			log.Printf("failed to update Git Pull Request field: %v", err)
 			// Continue even if field update fails

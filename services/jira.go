@@ -17,6 +17,9 @@ type JiraService interface {
 	// GetTicket fetches a ticket from Jira
 	GetTicket(key string) (*models.JiraTicketResponse, error)
 
+	// GetTicketWithExpandedFields fetches a ticket from Jira with expanded fields for custom field access
+	GetTicketWithExpandedFields(key string) (map[string]interface{}, map[string]string, error)
+
 	// UpdateTicketLabels updates the labels of a ticket
 	UpdateTicketLabels(key string, addLabels, removeLabels []string) error
 
@@ -25,6 +28,12 @@ type JiraService interface {
 
 	// UpdateTicketField updates a specific field of a ticket
 	UpdateTicketField(key string, fieldID string, value interface{}) error
+
+	// UpdateTicketFieldByName updates a specific field of a ticket by field name
+	UpdateTicketFieldByName(key string, fieldName string, value interface{}) error
+
+	// GetFieldIDByName resolves a field name to its ID
+	GetFieldIDByName(fieldName string) (string, error)
 
 	// AddComment adds a comment to a ticket
 	AddComment(key string, comment string) error
@@ -82,6 +91,41 @@ func (s *JiraServiceImpl) GetTicket(key string) (*models.JiraTicketResponse, err
 	}
 
 	return &ticket, nil
+}
+
+// GetTicketWithExpandedFields fetches a ticket from Jira with expanded fields for custom field access
+func (s *JiraServiceImpl) GetTicketWithExpandedFields(key string) (map[string]interface{}, map[string]string, error) {
+	url := fmt.Sprintf("%s/rest/api/2/issue/%s?expand=names", s.config.Jira.BaseURL, key)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.Jira.APIToken))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, nil, fmt.Errorf("failed to get ticket with expanded fields: %s, status code: %d", string(body), resp.StatusCode)
+	}
+
+	var ticketWithFields struct {
+		Fields map[string]interface{} `json:"fields"`
+		Names  map[string]string      `json:"names"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&ticketWithFields); err != nil {
+		return nil, nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return ticketWithFields.Fields, ticketWithFields.Names, nil
 }
 
 // UpdateTicketLabels updates the labels of a ticket
@@ -305,6 +349,57 @@ func (s *JiraServiceImpl) UpdateTicketField(key string, fieldID string, value in
 	}
 
 	return nil
+}
+
+// UpdateTicketFieldByName updates a specific field of a ticket by field name
+func (s *JiraServiceImpl) UpdateTicketFieldByName(key string, fieldName string, value interface{}) error {
+	fieldID, err := s.GetFieldIDByName(fieldName)
+	if err != nil {
+		return fmt.Errorf("failed to resolve field name '%s' to ID: %w", fieldName, err)
+	}
+	return s.UpdateTicketField(key, fieldID, value)
+}
+
+// GetFieldIDByName resolves a field name to its ID
+func (s *JiraServiceImpl) GetFieldIDByName(fieldName string) (string, error) {
+	url := fmt.Sprintf("%s/rest/api/2/field", s.config.Jira.BaseURL)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.Jira.APIToken))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("failed to get fields: %s, status code: %d", string(body), resp.StatusCode)
+	}
+
+	var fields []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&fields); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	// Search for the field by name
+	for _, field := range fields {
+		if field.Name == fieldName {
+			return field.ID, nil
+		}
+	}
+
+	return "", fmt.Errorf("field with name '%s' not found", fieldName)
 }
 
 // SearchTickets searches for tickets using JQL

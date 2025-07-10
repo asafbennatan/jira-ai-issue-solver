@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"jira-ai-issue-solver/models"
@@ -227,5 +229,93 @@ func TestExtractRepoInfo(t *testing.T) {
 				t.Errorf("Expected repo %s but got %s", tc.expectedRepo, repo)
 			}
 		})
+	}
+}
+
+// TestSwitchToBranch tests the SwitchToBranch method
+func TestSwitchToBranch(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "github-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Track the commands that would be executed
+	var executedCommands []string
+	mockExecutor := func(name string, args ...string) *exec.Cmd {
+		command := strings.Join(append([]string{name}, args...), " ")
+		executedCommands = append(executedCommands, command)
+
+		// Return a mock command that does nothing
+		return exec.Command("echo", "mocked")
+	}
+
+	// Create config
+	config := &models.Config{}
+	config.GitHub.BotUsername = "test-bot"
+	config.GitHub.BotEmail = "test@example.com"
+
+	// Create GitHub service with mocked executor
+	githubService := NewGitHubService(config, mockExecutor)
+
+	// Test switching to the test branch
+	err = githubService.SwitchToBranch(tempDir, "test-branch")
+	if err != nil {
+		t.Errorf("SwitchToBranch() error = %v", err)
+	}
+
+	// Verify the correct commands were executed
+	expectedCommands := []string{
+		"git fetch origin",
+		"git checkout test-branch",
+	}
+
+	if len(executedCommands) != len(expectedCommands) {
+		t.Errorf("Expected %d commands to be executed, got %d", len(expectedCommands), len(executedCommands))
+	}
+
+	for i, expected := range expectedCommands {
+		if i < len(executedCommands) && executedCommands[i] != expected {
+			t.Errorf("Expected command '%s', got '%s'", expected, executedCommands[i])
+		}
+	}
+}
+
+// TestSwitchToBranch_NonExistentBranch tests switching to a non-existent branch
+func TestSwitchToBranch_NonExistentBranch(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "github-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Initialize git repository
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tempDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to init git repository: %v", err)
+	}
+
+	// Create initial commit
+	cmd = exec.Command("git", "commit", "--allow-empty", "-m", "Initial commit")
+	cmd.Dir = tempDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to create initial commit: %v", err)
+	}
+
+	// Create config
+	config := &models.Config{}
+	config.GitHub.BotUsername = "test-bot"
+	config.GitHub.BotEmail = "test@example.com"
+
+	// Create GitHub service
+	githubService := NewGitHubService(config)
+
+	// Test switching to a non-existent branch
+	err = githubService.SwitchToBranch(tempDir, "non-existent-branch")
+	if err == nil {
+		t.Error("SwitchToBranch() should return error for non-existent branch")
 	}
 }

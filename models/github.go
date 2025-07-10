@@ -83,3 +83,43 @@ type GitHubCreatePRResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// GitHubPRComment represents a PR comment
+// (moved from pr_review_processor.go)
+type GitHubPRComment struct {
+	ID        int64      `json:"id"`
+	User      GitHubUser `json:"user"`
+	Body      string     `json:"body"`
+	Path      string     `json:"path"`
+	Line      int        `json:"line"`
+	HTMLURL   string     `json:"html_url"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+// GitHubPRDetails represents detailed PR information including reviews
+type GitHubPRDetails struct {
+	Number    int               `json:"number"`
+	State     string            `json:"state"`
+	Title     string            `json:"title"`
+	Body      string            `json:"body"`
+	HTMLURL   string            `json:"html_url"`
+	Head      GitHubRef         `json:"head"`
+	Base      GitHubRef         `json:"base"`
+	Reviews   []GitHubReview    `json:"reviews,omitempty"`
+	Comments  []GitHubPRComment `json:"-"` // We'll populate this separately
+	Files     []GitHubPRFile    `json:"files,omitempty"`
+	CreatedAt time.Time         `json:"created_at"`
+	UpdatedAt time.Time         `json:"updated_at"`
+}
+
+// GitHubPRFile represents a file changed in a PR
+type GitHubPRFile struct {
+	SHA       string `json:"sha"`
+	Filename  string `json:"filename"`
+	Status    string `json:"status"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+	Changes   int    `json:"changes"`
+	Patch     string `json:"patch"`
+}

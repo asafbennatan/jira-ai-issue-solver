@@ -67,10 +67,15 @@ func main() {
 	}
 
 	jiraIssueScannerService := services.NewJiraIssueScannerService(jiraService, githubService, aiService, config)
+	prFeedbackScannerService := services.NewPRFeedbackScannerService(jiraService, githubService, aiService, config)
 
 	// Start the Jira issue scanner service for periodic ticket scanning
 	log.Println("Starting Jira issue scanner service...")
 	jiraIssueScannerService.Start()
+
+	// Start the PR feedback scanner service for processing PR review feedback
+	log.Println("Starting PR feedback scanner service...")
+	prFeedbackScannerService.Start()
 
 	// Create HTTP server (simplified for health checks only)
 	mux := http.NewServeMux()
@@ -103,9 +108,10 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 
-	// Gracefully shutdown the scanner service
-	log.Println("Shutting down scanner service...")
+	// Gracefully shutdown the scanner services
+	log.Println("Shutting down scanner services...")
 	jiraIssueScannerService.Stop()
+	prFeedbackScannerService.Stop()
 
 	// Gracefully shutdown the server
 	log.Println("Shutting down server...")

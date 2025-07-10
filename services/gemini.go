@@ -20,7 +20,7 @@ import (
 type GeminiService interface {
 	AIService
 	// GenerateCodeGemini generates code using Gemini CLI and returns GeminiResponse
-	GenerateCodeGemini(prompt string, repoDir string) (*GeminiResponse, error)
+	GenerateCodeGemini(prompt string, repoDir string) (*models.GeminiResponse, error)
 }
 
 // GeminiServiceImpl implements the GeminiService interface
@@ -39,32 +39,6 @@ func NewGeminiService(config *models.Config, executor ...models.CommandExecutor)
 		config:   config,
 		executor: commandExecutor,
 	}
-}
-
-// GeminiResponse represents the response from Gemini CLI
-type GeminiResponse struct {
-	Type         string         `json:"type"`
-	IsError      bool           `json:"is_error"`
-	Result       string         `json:"result"`
-	SessionID    string         `json:"session_id"`
-	TotalCostUsd float64        `json:"total_cost_usd"`
-	Usage        GeminiUsage    `json:"usage"`
-	Message      *GeminiMessage `json:"message"`
-}
-
-// GeminiUsage represents usage information
-type GeminiUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-}
-
-// GeminiMessage represents the message structure from Gemini
-type GeminiMessage struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"`
-	Role    string `json:"role"`
-	Model   string `json:"model"`
-	Content string `json:"content"`
 }
 
 // GenerateCode implements the AIService interface
@@ -172,7 +146,7 @@ IMPORTANT: Verify that you actually created and wrote GEMINI.md at the root of t
 }
 
 // GenerateCodeGemini generates code using Gemini CLI
-func (s *GeminiServiceImpl) GenerateCodeGemini(prompt string, repoDir string) (*GeminiResponse, error) {
+func (s *GeminiServiceImpl) GenerateCodeGemini(prompt string, repoDir string) (*models.GeminiResponse, error) {
 	// Build command arguments based on configuration
 	log.Printf("repoDir: %s", repoDir)
 	log.Printf("Generating code with prompt: %s", prompt)
@@ -300,11 +274,11 @@ func (s *GeminiServiceImpl) GenerateCodeGemini(prompt string, repoDir string) (*
 	}
 
 	// Create response indicating completion
-	response := &GeminiResponse{
+	response := &models.GeminiResponse{
 		Type:    "assistant",
 		IsError: false,
 		Result:  "done",
-		Message: &GeminiMessage{
+		Message: &models.GeminiMessage{
 			Type:    "message",
 			Role:    "assistant",
 			Model:   s.config.Gemini.Model,

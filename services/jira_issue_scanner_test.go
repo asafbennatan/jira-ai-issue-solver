@@ -4,55 +4,22 @@ import (
 	"testing"
 	"time"
 
+	"jira-ai-issue-solver/mocks"
 	"jira-ai-issue-solver/models"
 )
 
-// Mock services for testing
-type mockJiraService struct{}
-type mockGitHubService struct{}
-type mockClaudeService struct{}
-
-func (m *mockJiraService) GetTicket(key string) (*models.JiraTicketResponse, error) { return nil, nil }
-func (m *mockJiraService) UpdateTicketLabels(key string, addLabels, removeLabels []string) error {
-	return nil
-}
-func (m *mockJiraService) UpdateTicketStatus(key string, status string) error { return nil }
-func (m *mockJiraService) AddComment(key string, comment string) error        { return nil }
-func (m *mockJiraService) SearchTickets(jql string) (*models.JiraSearchResponse, error) {
-	return &models.JiraSearchResponse{
-		Total:  0,
-		Issues: []models.JiraIssue{},
-	}, nil
-}
-
-func (m *mockGitHubService) CloneRepository(repoURL, directory string) error { return nil }
-func (m *mockGitHubService) CreateBranch(directory, branchName string) error { return nil }
-func (m *mockGitHubService) CommitChanges(directory, message string) error   { return nil }
-func (m *mockGitHubService) PushChanges(directory, branchName string) error  { return nil }
-func (m *mockGitHubService) CreatePullRequest(owner, repo, title, body, head, base string) (*models.GitHubCreatePRResponse, error) {
-	return nil, nil
-}
-func (m *mockGitHubService) ForkRepository(owner, repo string) (string, error) { return "", nil }
-func (m *mockGitHubService) CheckForkExists(owner, repo string) (exists bool, cloneURL string, err error) {
-	return false, "", nil
-}
-func (m *mockGitHubService) ResetFork(forkCloneURL, directory string) error { return nil }
-func (m *mockGitHubService) SyncForkWithUpstream(owner, repo string) error  { return nil }
-func (m *mockGitHubService) SwitchToTargetBranch(directory string) error    { return nil }
-
-func (m *mockClaudeService) GenerateCode(prompt string, repoDir string) (interface{}, error) {
-	return nil, nil
-}
-
-func (m *mockClaudeService) GenerateDocumentation(repoDir string) error {
-	return nil
-}
-
 func TestJiraIssueScannerService_StartStop(t *testing.T) {
-	// Create mock services
-	mockJiraService := &mockJiraService{}
-	mockGitHubService := &mockGitHubService{}
-	mockClaudeService := &mockClaudeService{}
+	// Create mock services with stubbed methods
+	mockJiraService := &mocks.MockJiraService{
+		SearchTicketsFunc: func(jql string) (*models.JiraSearchResponse, error) {
+			return &models.JiraSearchResponse{
+				Total:  0,
+				Issues: []models.JiraIssue{},
+			}, nil
+		},
+	}
+	mockGitHubService := &mocks.MockGitHubService{}
+	mockClaudeService := &mocks.MockClaudeService{}
 
 	// Create config with short interval for testing
 	config := &models.Config{}
@@ -76,10 +43,60 @@ func TestJiraIssueScannerService_StartStop(t *testing.T) {
 }
 
 func TestJiraIssueScannerService_ScanForTickets(t *testing.T) {
-	// Create mock services
-	mockJiraService := &mockJiraService{}
-	mockGitHubService := &mockGitHubService{}
-	mockClaudeService := &mockClaudeService{}
+	// Create mock services with stubbed methods
+	mockJiraService := &mocks.MockJiraService{
+		SearchTicketsFunc: func(jql string) (*models.JiraSearchResponse, error) {
+			return &models.JiraSearchResponse{
+				Total:  1,
+				Issues: []models.JiraIssue{{Key: "TEST-1"}},
+			}, nil
+		},
+		GetTicketFunc: func(key string) (*models.JiraTicketResponse, error) {
+			return &models.JiraTicketResponse{
+				Key: key,
+				Fields: models.JiraFields{
+					Summary:     "Test ticket",
+					Description: "Test description",
+					Components:  []models.JiraComponent{{ID: "1", Name: "frontend"}},
+				},
+			}, nil
+		},
+		UpdateTicketLabelsFunc: func(key string, addLabels, removeLabels []string) error {
+			return nil
+		},
+		UpdateTicketStatusFunc: func(key string, status string) error {
+			return nil
+		},
+		AddCommentFunc: func(key string, comment string) error {
+			return nil
+		},
+		GetFieldIDByNameFunc: func(fieldName string) (string, error) {
+			return "customfield_10001", nil
+		},
+	}
+	mockGitHubService := &mocks.MockGitHubService{
+		CreatePullRequestFunc: func(owner, repo, title, body, head, base string) (*models.GitHubCreatePRResponse, error) {
+			return &models.GitHubCreatePRResponse{
+				ID:      1,
+				Number:  1,
+				State:   "open",
+				Title:   title,
+				Body:    body,
+				HTMLURL: "https://github.com/example/repo/pull/1",
+			}, nil
+		},
+		ForkRepositoryFunc: func(owner, repo string) (string, error) {
+			return "https://github.com/mockuser/frontend.git", nil
+		},
+		CheckForkExistsFunc: func(owner, repo string) (exists bool, cloneURL string, err error) {
+			return true, "https://github.com/mockuser/frontend.git", nil
+		},
+	}
+	mockClaudeService := &mocks.MockClaudeService{
+		GenerateCodeFunc: func(prompt string, repoDir string) (*models.ClaudeResponse, error) {
+			return nil, nil
+		},
+	}
 
 	// Create config
 	config := &models.Config{}
@@ -87,12 +104,20 @@ func TestJiraIssueScannerService_ScanForTickets(t *testing.T) {
 	config.Jira.StatusTransitions.Todo = "To Do"
 	config.TempDir = "/tmp/test"
 
-	// Create scanner service
+	// Create a mock ticket processor with a no-op ProcessTicket
+	mockTicketProcessor := &mocks.MockTicketProcessor{
+		ProcessTicketFunc: func(key string) error {
+			return nil
+		},
+	}
+
+	// Create scanner service with injected mock ticket processor
 	scanner := &JiraIssueScannerServiceImpl{
-		jiraService:   mockJiraService,
-		githubService: mockGitHubService,
-		aiService:     mockClaudeService,
-		config:        config,
+		jiraService:     mockJiraService,
+		githubService:   mockGitHubService,
+		aiService:       mockClaudeService,
+		ticketProcessor: mockTicketProcessor,
+		config:          config,
 	}
 
 	// Test scanning for tickets

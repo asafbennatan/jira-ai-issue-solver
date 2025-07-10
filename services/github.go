@@ -46,6 +46,21 @@ type GitHubService interface {
 
 	// SwitchToTargetBranch switches to the configured target branch after cloning
 	SwitchToTargetBranch(directory string) error
+
+	// SwitchToBranch switches to a specific branch
+	SwitchToBranch(directory, branchName string) error
+
+	// PullChanges pulls the latest changes from the remote branch
+	PullChanges(directory, branchName string) error
+
+	AddPRComment(owner, repo string, prNumber int, body string) error
+	ListPRComments(owner, repo string, prNumber int) ([]models.GitHubPRComment, error)
+
+	// GetPRDetails gets detailed PR information including reviews, comments, and files
+	GetPRDetails(owner, repo string, prNumber int) (*models.GitHubPRDetails, error)
+
+	// ListPRReviews lists all reviews on a PR
+	ListPRReviews(owner, repo string, prNumber int) ([]models.GitHubReview, error)
 }
 
 // GitHubServiceImpl implements the GitHubService interface
@@ -657,6 +672,124 @@ func (s *GitHubServiceImpl) SwitchToTargetBranch(directory string) error {
 	return nil
 }
 
+// SwitchToBranch switches to a specific branch
+func (s *GitHubServiceImpl) SwitchToBranch(directory, branchName string) error {
+	// Fetch the latest changes from origin
+	cmd := s.executor("git", "fetch", "origin")
+	cmd.Dir = directory
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to fetch origin: %w, stderr: %s", err, stderr.String())
+	}
+
+	// Checkout the specified branch
+	cmd = s.executor("git", "checkout", branchName)
+	cmd.Dir = directory
+
+	stderr.Reset()
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to checkout branch %s: %w, stderr: %s", branchName, err, stderr.String())
+	}
+
+	return nil
+}
+
+// PullChanges pulls the latest changes from the remote branch
+func (s *GitHubServiceImpl) PullChanges(directory, branchName string) error {
+	// Pull the latest changes from the remote branch
+	cmd := s.executor("git", "pull", "origin", branchName)
+	cmd.Dir = directory
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to pull changes from origin/%s: %w, stderr: %s", branchName, err, stderr.String())
+	}
+
+	return nil
+}
+
+// AddPRComment posts a comment to a PR (issue) on GitHub
+func (s *GitHubServiceImpl) AddPRComment(owner, repo string, prNumber int, body string) error {
+	commentRequest := struct {
+		Body string `json:"body"`
+	}{Body: body}
+
+	jsonPayload, err := json.Marshal(commentRequest)
+	if err != nil {
+		return fmt.Errorf("failed to marshal comment request: %w", err)
+	}
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%d/comments", owner, repo, prNumber)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	token, err := s.getAuthToken()
+	if err != nil {
+		return fmt.Errorf("failed to get auth token: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to add PR comment: %s, status: %d", string(body), resp.StatusCode)
+	}
+
+	return nil
+}
+
+// ListPRComments lists all comments on a PR (issue) on GitHub
+func (s *GitHubServiceImpl) ListPRComments(owner, repo string, prNumber int) ([]models.GitHubPRComment, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%d/comments", owner, repo, prNumber)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	token, err := s.getAuthToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get auth token: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get PR comments: %s, status: %d", string(body), resp.StatusCode)
+	}
+
+	var comments []models.GitHubPRComment
+	if err := json.NewDecoder(resp.Body).Decode(&comments); err != nil {
+		return nil, fmt.Errorf("failed to decode comments: %w", err)
+	}
+
+	return comments, nil
+}
+
 // ExtractRepoInfo extracts owner and repo from a repository URL
 func ExtractRepoInfo(repoURL string) (owner, repo string, err error) {
 	// Handle SSH URLs: git@github.com:owner/repo.git
@@ -682,4 +815,88 @@ func ExtractRepoInfo(repoURL string) (owner, repo string, err error) {
 	}
 
 	return "", "", fmt.Errorf("unsupported repository URL format: %s", repoURL)
+}
+
+// GetPRDetails gets detailed PR information including reviews, comments, and files
+func (s *GitHubServiceImpl) GetPRDetails(owner, repo string, prNumber int) (*models.GitHubPRDetails, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls/%d", owner, repo, prNumber)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	token, err := s.getAuthToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get auth token: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get PR details: %s, status: %d", string(body), resp.StatusCode)
+	}
+
+	var prDetails models.GitHubPRDetails
+	if err := json.NewDecoder(resp.Body).Decode(&prDetails); err != nil {
+		return nil, fmt.Errorf("failed to decode PR details: %w", err)
+	}
+
+	// Get reviews
+	reviews, err := s.ListPRReviews(owner, repo, prNumber)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get PR reviews: %w", err)
+	}
+	prDetails.Reviews = reviews
+
+	// Get comments
+	comments, err := s.ListPRComments(owner, repo, prNumber)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get PR comments: %w", err)
+	}
+	prDetails.Comments = comments
+
+	return &prDetails, nil
+}
+
+// ListPRReviews lists all reviews on a PR
+func (s *GitHubServiceImpl) ListPRReviews(owner, repo string, prNumber int) ([]models.GitHubReview, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls/%d/reviews", owner, repo, prNumber)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	token, err := s.getAuthToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get auth token: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get PR reviews: %s, status: %d", string(body), resp.StatusCode)
+	}
+
+	var reviews []models.GitHubReview
+	if err := json.NewDecoder(resp.Body).Decode(&reviews); err != nil {
+		return nil, fmt.Errorf("failed to decode reviews: %w", err)
+	}
+
+	return reviews, nil
 }
