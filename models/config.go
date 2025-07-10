@@ -33,6 +33,7 @@ type Config struct {
 		PersonalAccessToken string `yaml:"personal_access_token"`
 		BotUsername         string `yaml:"bot_username"`
 		BotEmail            string `yaml:"bot_email"`
+		TargetBranch        string `yaml:"target_branch" default:"main"`
 	} `yaml:"github"`
 
 	// AI Provider selection

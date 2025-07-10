@@ -16,7 +16,7 @@ A Go application that automatically processes Jira tickets labeled with "good-fo
 
 The service runs a periodic scanner that:
 
-1. Searches for Jira tickets assigned to the configured Jira user that are in the configured "todo" status
+1. Searches for Jira tickets where the configured Jira user is set as a contributor that are in the configured "todo" status
 2. Processes each ticket by updating status to "In Progress"
 3. Forks the repository associated with the ticket to the bot's GitHub account
 4. Clones the forked repository and creates a new branch
@@ -92,6 +92,7 @@ github:
   personal_access_token: your-personal-access-token-here
   bot_username: your-org-ai-bot
   bot_email: ai-bot@your-org.com
+  target_branch: main
 
 # Claude CLI Configuration
 claude:
@@ -132,6 +133,15 @@ The `jira` section contains Jira-specific settings:
   - `todo`: Status name for tickets ready for AI processing (default: "To Do")
   - `in_progress`: Status name to set when AI starts processing (default: "In Progress")
   - `in_review`: Status name to set when PR is created (default: "In Review")
+
+### GitHub Configuration
+
+The `github` section contains GitHub-specific settings:
+
+- `personal_access_token`: Your GitHub Personal Access Token
+- `bot_username`: The username of the GitHub bot account
+- `bot_email`: The email address for the GitHub bot account
+- `target_branch`: The target branch for pull requests (default: "main"). This allows you to create PRs against a specific branch for testing purposes. For example, you can set this to "develop" or "staging" to test changes before merging to main.
 
 ### Component Mapping
 
@@ -216,7 +226,7 @@ jira:
 - **in_progress** → **Open** (if processing fails)
 
 **Ticket Scanning:**
-The scanner looks for tickets that are assigned to the configured Jira user and are in the configured "todo" status. This approach ensures only appropriate tickets are processed.
+The scanner looks for tickets where the configured Jira user is set as a contributor and are in the configured "todo" status. This approach ensures only appropriate tickets are processed.
 
 **Custom Status Names:**
 You can customize the status names to match your Jira workflow. For example:

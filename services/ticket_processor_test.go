@@ -66,6 +66,7 @@ func (m *mockGitHubServiceForProcessor) CheckForkExists(owner, repo string) (exi
 }
 func (m *mockGitHubServiceForProcessor) ResetFork(forkCloneURL, directory string) error { return nil }
 func (m *mockGitHubServiceForProcessor) SyncForkWithUpstream(owner, repo string) error  { return nil }
+func (m *mockGitHubServiceForProcessor) SwitchToTargetBranch(directory string) error    { return nil }
 
 func (m *mockClaudeServiceForProcessor) GenerateCode(prompt string, repoDir string) (interface{}, error) {
 	return nil, nil
@@ -136,6 +137,7 @@ func (m *mockGitHubServiceForHeadFormat) CheckForkExists(owner, repo string) (ex
 }
 func (m *mockGitHubServiceForHeadFormat) ResetFork(forkCloneURL, directory string) error { return nil }
 func (m *mockGitHubServiceForHeadFormat) SyncForkWithUpstream(owner, repo string) error  { return nil }
+func (m *mockGitHubServiceForHeadFormat) SwitchToTargetBranch(directory string) error    { return nil }
 
 type mockJiraServiceForHeadFormat struct{}
 

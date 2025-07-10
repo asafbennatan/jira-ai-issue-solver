@@ -15,6 +15,7 @@ type MockGitHubService struct {
 	CheckForkExistsFunc      func(owner, repo string) (exists bool, cloneURL string, err error)
 	ResetForkFunc            func(forkCloneURL, directory string) error
 	SyncForkWithUpstreamFunc func(owner, repo string) error
+	SwitchToTargetBranchFunc func(directory string) error
 }
 
 // CloneRepository is the mock implementation of GitHubService's CloneRepository method
@@ -85,6 +86,14 @@ func (m *MockGitHubService) ResetFork(forkCloneURL, directory string) error {
 func (m *MockGitHubService) SyncForkWithUpstream(owner, repo string) error {
 	if m.SyncForkWithUpstreamFunc != nil {
 		return m.SyncForkWithUpstreamFunc(owner, repo)
+	}
+	return nil
+}
+
+// SwitchToTargetBranch is the mock implementation of GitHubService's SwitchToTargetBranch method
+func (m *MockGitHubService) SwitchToTargetBranch(directory string) error {
+	if m.SwitchToTargetBranchFunc != nil {
+		return m.SwitchToTargetBranchFunc(directory)
 	}
 	return nil
 }

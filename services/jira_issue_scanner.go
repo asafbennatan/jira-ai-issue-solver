@@ -93,7 +93,7 @@ func (s *JiraIssueScannerServiceImpl) scanForTickets() {
 	todoStatus := s.config.Jira.StatusTransitions.Todo
 
 	// Build JQL query to find tickets assigned to current user in TODO status
-	jql := fmt.Sprintf(`assignee =currentUser() AND status = "%s" ORDER BY updated DESC`, todoStatus)
+	jql := fmt.Sprintf(`Contributors = currentUser() AND status = "%s" ORDER BY updated DESC`, todoStatus)
 
 	searchResponse, err := s.jiraService.SearchTickets(jql)
 	if err != nil {

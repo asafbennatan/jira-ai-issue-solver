@@ -138,6 +138,14 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 		return err
 	}
 
+	// Switch to the target branch if we're not already on it
+	err = p.githubService.SwitchToTargetBranch(repoDir)
+	if err != nil {
+		log.Printf("failed to switch to target branch: %v", err)
+		p.handleFailure(ticketKey, fmt.Sprintf("Failed to switch to target branch: %v", err))
+		return err
+	}
+
 	// Create a new branch
 	branchName := ticketKey
 	err = p.githubService.CreateBranch(repoDir, branchName)
@@ -188,7 +196,7 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 
 	// When creating a pull request from a fork, the head parameter should be in the format "forkOwner:branchName"
 	head := fmt.Sprintf("%s:%s", p.config.GitHub.BotUsername, branchName)
-	pr, err := p.githubService.CreatePullRequest(owner, repo, prTitle, prBody, head, "main")
+	pr, err := p.githubService.CreatePullRequest(owner, repo, prTitle, prBody, head, p.config.GitHub.TargetBranch)
 	if err != nil {
 		log.Printf("failed to create pull request: %v", err)
 		p.handleFailure(ticketKey, fmt.Sprintf("Failed to create pull request: %v", err))

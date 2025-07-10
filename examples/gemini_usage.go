@@ -15,9 +15,9 @@ func main() {
 	}
 
 	// Create AI service with Gemini
-	aiService := services.NewAIService(config, services.AIServiceGemini)
+	aiService := services.NewGeminiService(config)
 
-	fmt.Printf("Using AI service: %s\n", aiService.GetServiceType())
+	fmt.Printf("Using AI service: Gemini\n")
 
 	// Example prompt
 	prompt := "# Task\n\n" +
@@ -46,16 +46,9 @@ func main() {
 		log.Fatalf("Failed to generate code: %v", err)
 	}
 
-	// Handle the result based on service type
-	switch aiService.GetServiceType() {
-	case services.AIServiceGemini:
-		if geminiResult, ok := result.(*services.GeminiResponse); ok {
-			fmt.Printf("Gemini Response:\n%s\n", geminiResult.Result)
-		}
-	case services.AIServiceClaude:
-		if claudeResult, ok := result.(*services.ClaudeResponse); ok {
-			fmt.Printf("Claude Response:\n%s\n", claudeResult.Result)
-		}
+	// Handle the result
+	if geminiResult, ok := result.(*services.GeminiResponse); ok {
+		fmt.Printf("Gemini Response:\n%s\n", geminiResult.Result)
 	}
 }
 
@@ -64,14 +57,17 @@ func exampleSwitchAIServices() {
 	config, _ := models.LoadConfig("config.yaml")
 
 	// Use Claude
-	claudeService := services.NewAIService(config, services.AIServiceClaude)
-	fmt.Printf("Service type: %s\n", claudeService.GetServiceType())
+	claudeService := services.NewClaudeService(config)
+	fmt.Printf("Service type: Claude\n")
+	_ = claudeService // Use variable to avoid unused warning
 
 	// Use Gemini
-	geminiService := services.NewAIService(config, services.AIServiceGemini)
-	fmt.Printf("Service type: %s\n", geminiService.GetServiceType())
+	geminiService := services.NewGeminiService(config)
+	fmt.Printf("Service type: Gemini\n")
+	_ = geminiService // Use variable to avoid unused warning
 
 	// Use default (Claude)
-	defaultService := services.NewAIService(config, services.AIServiceClaude)
-	fmt.Printf("Service type: %s\n", defaultService.GetServiceType())
+	defaultService := services.NewClaudeService(config)
+	fmt.Printf("Service type: Claude\n")
+	_ = defaultService // Use variable to avoid unused warning
 }

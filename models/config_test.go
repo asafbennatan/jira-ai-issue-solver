@@ -139,19 +139,14 @@ func TestLoadConfig_WithStatusTransitions(t *testing.T) {
 	// Create a temporary config file
 	configContent := `
 jira:
-  base_url: https://test.atlassian.net
-  username: test-user
-  api_token: test-token
   status_transitions:
     todo: "To Do"
-    in_progress: "Development"
-    in_review: "Code Review"
-ai_provider: claude
-component_to_repo:
-  frontend: https://github.com/test/frontend.git
+    in_progress: "In Progress"
+    in_review: "In Review"
+github:
+  target_branch: "develop"
 `
-
-	tmpfile, err := os.CreateTemp("", "config-*.yaml")
+	tmpfile, err := os.CreateTemp("", "config_test_*.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,17 +162,56 @@ component_to_repo:
 	// Load the config
 	config, err := LoadConfig(tmpfile.Name())
 	if err != nil {
-		t.Fatalf("LoadConfig() error = %v", err)
+		t.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Verify the status transitions were loaded correctly
+	// Verify status transitions
 	if config.Jira.StatusTransitions.Todo != "To Do" {
-		t.Errorf("Expected Todo status to be 'To Do', got '%s'", config.Jira.StatusTransitions.Todo)
+		t.Errorf("Expected todo status 'To Do', got '%s'", config.Jira.StatusTransitions.Todo)
 	}
-	if config.Jira.StatusTransitions.InProgress != "Development" {
-		t.Errorf("Expected InProgress status to be 'Development', got '%s'", config.Jira.StatusTransitions.InProgress)
+	if config.Jira.StatusTransitions.InProgress != "In Progress" {
+		t.Errorf("Expected in_progress status 'In Progress', got '%s'", config.Jira.StatusTransitions.InProgress)
 	}
-	if config.Jira.StatusTransitions.InReview != "Code Review" {
-		t.Errorf("Expected InReview status to be 'Code Review', got '%s'", config.Jira.StatusTransitions.InReview)
+	if config.Jira.StatusTransitions.InReview != "In Review" {
+		t.Errorf("Expected in_review status 'In Review', got '%s'", config.Jira.StatusTransitions.InReview)
+	}
+
+	// Verify target branch
+	if config.GitHub.TargetBranch != "develop" {
+		t.Errorf("Expected target branch 'develop', got '%s'", config.GitHub.TargetBranch)
+	}
+}
+
+func TestLoadConfig_WithDefaultTargetBranch(t *testing.T) {
+	// Create a temporary config file without target_branch (should default to "main")
+	configContent := `
+jira:
+  status_transitions:
+    todo: "To Do"
+    in_progress: "In Progress"
+    in_review: "In Review"
+`
+	tmpfile, err := os.CreateTemp("", "config_test_*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(configContent)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load the config
+	config, err := LoadConfig(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Verify target branch defaults to "main"
+	if config.GitHub.TargetBranch != "main" {
+		t.Errorf("Expected default target branch 'main', got '%s'", config.GitHub.TargetBranch)
 	}
 }

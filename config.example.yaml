@@ -19,6 +19,7 @@ github:
   personal_access_token: your-personal-access-token-here
   bot_username: your-org-ai-bot
   bot_email: ai-bot@your-org.com
+  target_branch: main
 
 # AI Provider Selection (choose one: "claude" or "gemini")
 ai_provider: claude

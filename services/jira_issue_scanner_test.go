@@ -38,6 +38,7 @@ func (m *mockGitHubService) CheckForkExists(owner, repo string) (exists bool, cl
 }
 func (m *mockGitHubService) ResetFork(forkCloneURL, directory string) error { return nil }
 func (m *mockGitHubService) SyncForkWithUpstream(owner, repo string) error  { return nil }
+func (m *mockGitHubService) SwitchToTargetBranch(directory string) error    { return nil }
 
 func (m *mockClaudeService) GenerateCode(prompt string, repoDir string) (interface{}, error) {
 	return nil, nil

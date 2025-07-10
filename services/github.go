@@ -43,6 +43,9 @@ type GitHubService interface {
 
 	// SyncForkWithUpstream syncs a fork with its upstream repository
 	SyncForkWithUpstream(owner, repo string) error
+
+	// SwitchToTargetBranch switches to the configured target branch after cloning
+	SwitchToTargetBranch(directory string) error
 }
 
 // GitHubServiceImpl implements the GitHubService interface
@@ -185,7 +188,7 @@ func (s *GitHubServiceImpl) getAuthToken() (string, error) {
 	return s.config.GitHub.PersonalAccessToken, nil
 }
 
-// CreateBranch creates a new branch in a local repository based on the latest origin/main
+// CreateBranch creates a new branch in a local repository based on the latest target branch
 func (s *GitHubServiceImpl) CreateBranch(directory, branchName string) error {
 	// Fetch the latest changes from origin
 	cmd := s.executor("git", "fetch", "origin")
@@ -198,44 +201,26 @@ func (s *GitHubServiceImpl) CreateBranch(directory, branchName string) error {
 		return fmt.Errorf("failed to fetch origin: %w, stderr: %s", err, stderr.String())
 	}
 
-	// Checkout main/master branch
-	cmd = s.executor("git", "checkout", "main")
+	// Checkout the target branch
+	cmd = s.executor("git", "checkout", s.config.GitHub.TargetBranch)
 	cmd.Dir = directory
 
 	stderr.Reset()
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		// Try master branch
-		cmd = s.executor("git", "checkout", "master")
-		cmd.Dir = directory
-
-		stderr.Reset()
-		cmd.Stderr = &stderr
-
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to checkout main/master branch: %w, stderr: %s", err, stderr.String())
-		}
+		return fmt.Errorf("failed to checkout target branch %s: %w, stderr: %s", s.config.GitHub.TargetBranch, err, stderr.String())
 	}
 
-	// Reset to origin/main or origin/master to ensure we're up to date
-	cmd = s.executor("git", "reset", "--hard", "origin/main")
+	// Reset to the latest commit on the target branch to ensure we're up to date
+	cmd = s.executor("git", "reset", "--hard", "origin/"+s.config.GitHub.TargetBranch)
 	cmd.Dir = directory
 
 	stderr.Reset()
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		// Try with master branch
-		cmd = s.executor("git", "reset", "--hard", "origin/master")
-		cmd.Dir = directory
-
-		stderr.Reset()
-		cmd.Stderr = &stderr
-
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to reset to origin/main or origin/master: %w, stderr: %s", err, stderr.String())
-		}
+		return fmt.Errorf("failed to reset to latest commit on target branch %s: %w, stderr: %s", s.config.GitHub.TargetBranch, err, stderr.String())
 	}
 
 	// Check if the branch already exists locally
@@ -628,6 +613,44 @@ func (s *GitHubServiceImpl) SyncForkWithUpstream(owner, repo string) error {
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("failed to sync fork: %s, status code: %d", string(body), resp.StatusCode)
+	}
+
+	return nil
+}
+
+// SwitchToTargetBranch switches to the configured target branch after cloning
+func (s *GitHubServiceImpl) SwitchToTargetBranch(directory string) error {
+	// Fetch the latest changes from origin
+	cmd := s.executor("git", "fetch", "origin")
+	cmd.Dir = directory
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to fetch origin: %w, stderr: %s", err, stderr.String())
+	}
+
+	// Checkout the target branch
+	cmd = s.executor("git", "checkout", s.config.GitHub.TargetBranch)
+	cmd.Dir = directory
+
+	stderr.Reset()
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to checkout target branch %s: %w, stderr: %s", s.config.GitHub.TargetBranch, err, stderr.String())
+	}
+
+	// Reset to the latest commit on the target branch to ensure we're up to date
+	cmd = s.executor("git", "reset", "--hard", "origin/"+s.config.GitHub.TargetBranch)
+	cmd.Dir = directory
+
+	stderr.Reset()
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to reset to latest commit on target branch %s: %w, stderr: %s", s.config.GitHub.TargetBranch, err, stderr.String())
 	}
 
 	return nil
