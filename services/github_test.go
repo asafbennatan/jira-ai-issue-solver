@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os/exec"
@@ -45,19 +46,21 @@ func TestCreatePullRequest(t *testing.T) {
 		body           string
 		head           string
 		base           string
+		prLabel        string
 		mockResponse   *http.Response
 		mockError      error
 		expectedResult *models.GitHubCreatePRResponse
 		expectedError  bool
 	}{
 		{
-			name:  "successful PR creation",
-			owner: "example",
-			repo:  "repo",
-			title: "Test PR",
-			body:  "This is a test PR",
-			head:  "feature/TEST-123",
-			base:  "main",
+			name:    "successful PR creation",
+			owner:   "example",
+			repo:    "repo",
+			title:   "Test PR",
+			body:    "This is a test PR",
+			head:    "feature/TEST-123",
+			base:    "main",
+			prLabel: "ai-pr",
 			mockResponse: &http.Response{
 				StatusCode: http.StatusCreated,
 				Body: io.NopCloser(bytes.NewReader([]byte(`{
@@ -83,13 +86,14 @@ func TestCreatePullRequest(t *testing.T) {
 			expectedError: false,
 		},
 		{
-			name:  "error creating PR",
-			owner: "example",
-			repo:  "repo",
-			title: "Test PR",
-			body:  "This is a test PR",
-			head:  "feature/TEST-123",
-			base:  "main",
+			name:    "error creating PR",
+			owner:   "example",
+			repo:    "repo",
+			title:   "Test PR",
+			body:    "This is a test PR",
+			head:    "feature/TEST-123",
+			base:    "main",
+			prLabel: "ai-pr",
 			mockResponse: &http.Response{
 				StatusCode: http.StatusUnprocessableEntity,
 				Body:       io.NopCloser(bytes.NewReader([]byte(`{"message":"Validation Failed","errors":[{"resource":"PullRequest","code":"custom","message":"A pull request already exists for example:feature/TEST-123."}],"documentation_url":"https://docs.github.com/rest/reference/pulls#create-a-pull-request"}`))),
@@ -102,8 +106,11 @@ func TestCreatePullRequest(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Create a mock HTTP client
+			// Create a mock HTTP client that captures the request body
+			var capturedBody []byte
 			mockClient := NewTestClient(func(req *http.Request) (*http.Response, error) {
+				// Capture the request body
+				capturedBody, _ = io.ReadAll(req.Body)
 				return tc.mockResponse, tc.mockError
 			})
 
@@ -112,6 +119,7 @@ func TestCreatePullRequest(t *testing.T) {
 			config.GitHub.PersonalAccessToken = "test-token"
 			config.GitHub.BotUsername = "test-bot"
 			config.GitHub.BotEmail = "test@example.com"
+			config.GitHub.PRLabel = tc.prLabel
 
 			service := &GitHubServiceImpl{
 				config:   config,
@@ -140,6 +148,20 @@ func TestCreatePullRequest(t *testing.T) {
 						t.Errorf("Expected result Number %d but got %d", tc.expectedResult.Number, result.Number)
 					}
 					// Add more assertions for other fields as needed
+				}
+			}
+
+			// Verify that the label was included in the request
+			if len(capturedBody) > 0 {
+				var requestPayload models.GitHubCreatePRRequest
+				if err := json.Unmarshal(capturedBody, &requestPayload); err != nil {
+					t.Errorf("Failed to unmarshal request body: %v", err)
+				} else {
+					if len(requestPayload.Labels) == 0 {
+						t.Errorf("Expected labels to be included in request, but got empty labels")
+					} else if requestPayload.Labels[0] != tc.prLabel {
+						t.Errorf("Expected label '%s' but got '%s'", tc.prLabel, requestPayload.Labels[0])
+					}
 				}
 			}
 		})

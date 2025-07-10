@@ -20,6 +20,7 @@ github:
   bot_username: your-org-ai-bot
   bot_email: ai-bot@your-org.com
   target_branch: main
+  pr_label: ai-pr
 
 # AI Provider Selection (choose one: "claude" or "gemini")
 ai_provider: claude

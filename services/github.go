@@ -327,10 +327,11 @@ func (s *GitHubServiceImpl) CreatePullRequest(owner, repo, title, body, head, ba
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls", owner, repo)
 
 	payload := models.GitHubCreatePRRequest{
-		Title: title,
-		Body:  body,
-		Head:  head,
-		Base:  base,
+		Title:  title,
+		Body:   body,
+		Head:   head,
+		Base:   base,
+		Labels: []string{s.config.GitHub.PRLabel},
 	}
 
 	jsonPayload, err := json.Marshal(payload)

@@ -4,7 +4,7 @@ import "time"
 
 // GitHubWebhook represents the webhook payload from GitHub
 type GitHubWebhook struct {
-	Action      string           `json:"action"`
+	Action      string            `json:"action"`
 	PullRequest GitHubPullRequest `json:"pull_request"`
 	Repository  GitHubRepository  `json:"repository"`
 	Sender      GitHubUser        `json:"sender"`
@@ -55,30 +55,31 @@ type GitHubRef struct {
 
 // GitHubReview represents a GitHub pull request review
 type GitHubReview struct {
-	ID        int64      `json:"id"`
-	User      GitHubUser `json:"user"`
-	Body      string     `json:"body"`
-	State     string     `json:"state"`
-	HTMLURL   string     `json:"html_url"`
-	SubmittedAt time.Time `json:"submitted_at"`
+	ID          int64      `json:"id"`
+	User        GitHubUser `json:"user"`
+	Body        string     `json:"body"`
+	State       string     `json:"state"`
+	HTMLURL     string     `json:"html_url"`
+	SubmittedAt time.Time  `json:"submitted_at"`
 }
 
 // GitHubCreatePRRequest represents the request to create a pull request
 type GitHubCreatePRRequest struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
-	Head  string `json:"head"`
-	Base  string `json:"base"`
+	Title  string   `json:"title"`
+	Body   string   `json:"body"`
+	Head   string   `json:"head"`
+	Base   string   `json:"base"`
+	Labels []string `json:"labels,omitempty"`
 }
 
 // GitHubCreatePRResponse represents the response from creating a pull request
 type GitHubCreatePRResponse struct {
-	ID        int64      `json:"id"`
-	Number    int        `json:"number"`
-	State     string     `json:"state"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	HTMLURL   string     `json:"html_url"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	ID        int64     `json:"id"`
+	Number    int       `json:"number"`
+	State     string    `json:"state"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	HTMLURL   string    `json:"html_url"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

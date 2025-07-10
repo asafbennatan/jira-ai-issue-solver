@@ -186,6 +186,7 @@ func TestTicketProcessor_CreatePullRequestHeadFormat(t *testing.T) {
 	config.GitHub.BotUsername = "test-bot"
 	config.GitHub.BotEmail = "test@example.com"
 	config.GitHub.PersonalAccessToken = "test-token"
+	config.GitHub.PRLabel = "ai-pr"
 	config.TempDir = "/tmp"
 	config.Jira.DisableErrorComments = true
 	config.ComponentToRepo = map[string]string{

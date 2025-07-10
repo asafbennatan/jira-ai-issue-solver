@@ -34,6 +34,7 @@ type Config struct {
 		BotUsername         string `yaml:"bot_username"`
 		BotEmail            string `yaml:"bot_email"`
 		TargetBranch        string `yaml:"target_branch" default:"main"`
+		PRLabel             string `yaml:"pr_label" default:"ai-pr"`
 	} `yaml:"github"`
 
 	// AI Provider selection
