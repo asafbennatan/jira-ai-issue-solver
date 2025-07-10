@@ -9,6 +9,7 @@ type MockJiraService struct {
 	GetTicketFunc          func(key string) (*models.JiraTicketResponse, error)
 	UpdateTicketLabelsFunc func(key string, addLabels, removeLabels []string) error
 	UpdateTicketStatusFunc func(key string, status string) error
+	UpdateTicketFieldFunc  func(key string, fieldID string, value interface{}) error
 	AddCommentFunc         func(key string, comment string) error
 	SearchTicketsFunc      func(jql string) (*models.JiraSearchResponse, error)
 }
@@ -33,6 +34,14 @@ func (m *MockJiraService) UpdateTicketLabels(key string, addLabels, removeLabels
 func (m *MockJiraService) UpdateTicketStatus(key string, status string) error {
 	if m.UpdateTicketStatusFunc != nil {
 		return m.UpdateTicketStatusFunc(key, status)
+	}
+	return nil
+}
+
+// UpdateTicketField is the mock implementation of JiraService's UpdateTicketField method
+func (m *MockJiraService) UpdateTicketField(key string, fieldID string, value interface{}) error {
+	if m.UpdateTicketFieldFunc != nil {
+		return m.UpdateTicketFieldFunc(key, fieldID, value)
 	}
 	return nil
 }

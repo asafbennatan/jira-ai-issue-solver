@@ -16,12 +16,13 @@ type Config struct {
 
 	// Jira configuration
 	Jira struct {
-		BaseURL              string `yaml:"base_url"`
-		Username             string `yaml:"username"`
-		APIToken             string `yaml:"api_token"`
-		IntervalSeconds      int    `yaml:"interval_seconds" default:"300"`
-		DisableErrorComments bool   `yaml:"disable_error_comments" default:"false"`
-		StatusTransitions    struct {
+		BaseURL               string `yaml:"base_url"`
+		Username              string `yaml:"username"`
+		APIToken              string `yaml:"api_token"`
+		IntervalSeconds       int    `yaml:"interval_seconds" default:"300"`
+		DisableErrorComments  bool   `yaml:"disable_error_comments" default:"false"`
+		GitPullRequestFieldID string `yaml:"git_pull_request_field_id"`
+		StatusTransitions     struct {
 			Todo       string `yaml:"todo" default:"To Do"`
 			InProgress string `yaml:"in_progress" default:"In Progress"`
 			InReview   string `yaml:"in_review" default:"In Review"`

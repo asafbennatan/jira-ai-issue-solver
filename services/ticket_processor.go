@@ -101,10 +101,7 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 		}
 		log.Printf("fork created successfully, waiting for fork to be ready...")
 
-		// Wait for the fork to be ready (GitHub API can take a few seconds)
-		time.Sleep(5 * time.Second)
-
-		// Verify the fork is ready by checking if it exists
+		// Wait for the fork to be ready by checking if it exists
 		for i := 0; i < 10; i++ { // Try up to 10 times (50 seconds total)
 			exists, forkURL, err = p.githubService.CheckForkExists(owner, repo)
 			if err != nil {
@@ -201,6 +198,17 @@ func (p *TicketProcessorImpl) ProcessTicket(ticketKey string) error {
 		log.Printf("failed to create pull request: %v", err)
 		p.handleFailure(ticketKey, fmt.Sprintf("Failed to create pull request: %v", err))
 		return err
+	}
+
+	// Update the Git Pull Request field if configured
+	if p.config.Jira.GitPullRequestFieldID != "" {
+		err = p.jiraService.UpdateTicketField(ticketKey, p.config.Jira.GitPullRequestFieldID, pr.HTMLURL)
+		if err != nil {
+			log.Printf("failed to update Git Pull Request field: %v", err)
+			// Continue even if field update fails
+		} else {
+			log.Printf("Successfully updated Git Pull Request field with URL: %s", pr.HTMLURL)
+		}
 	}
 
 	// Add a comment to the ticket with the PR link

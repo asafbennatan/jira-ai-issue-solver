@@ -9,6 +9,7 @@ jira:
   api_token: your-jira-api-token
   interval_seconds: 300
   disable_error_comments: false
+  # git_pull_request_field_id: customfield_12345  # Uncomment and set to your custom field ID for PR URL
   status_transitions:
     todo: "To Do"
     in_progress: "In Progress"

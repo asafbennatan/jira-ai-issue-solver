@@ -23,6 +23,9 @@ type JiraService interface {
 	// UpdateTicketStatus updates the status of a ticket
 	UpdateTicketStatus(key string, status string) error
 
+	// UpdateTicketField updates a specific field of a ticket
+	UpdateTicketField(key string, fieldID string, value interface{}) error
+
 	// AddComment adds a comment to a ticket
 	AddComment(key string, comment string) error
 
@@ -262,6 +265,43 @@ func (s *JiraServiceImpl) AddComment(key string, comment string) error {
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("failed to add comment: %s, status code: %d", string(body), resp.StatusCode)
+	}
+
+	return nil
+}
+
+// UpdateTicketField updates a specific field of a ticket
+func (s *JiraServiceImpl) UpdateTicketField(key string, fieldID string, value interface{}) error {
+	url := fmt.Sprintf("%s/rest/api/2/issue/%s", s.config.Jira.BaseURL, key)
+
+	payload := map[string]interface{}{
+		"fields": map[string]interface{}{
+			fieldID: value,
+		},
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.config.Jira.APIToken))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to update ticket field %s: %s, status code: %d", fieldID, string(body), resp.StatusCode)
 	}
 
 	return nil
