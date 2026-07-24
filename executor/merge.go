@@ -543,13 +543,14 @@ func (p *Pipeline) runMultiRepoMergeAI(
 	}
 
 	importExcludes := collectExcludes(mergedImports)
-	committed, err := p.commitMultiRepoMergeResolution(logger, job, workItem, settings, wsPath, branchName, repoInfos, importExcludes)
+	committed, sha, err := p.commitMultiRepoMergeResolution(logger, job, workItem, settings, wsPath, branchName, repoInfos, importExcludes)
 	if err != nil {
 		return ctr, result, err
 	}
 	if !committed {
 		return ctr, result, fmt.Errorf("AI produced no committable changes resolving merge conflicts (exit code: %d)", exitCode)
 	}
+	result.MergeCommitSHA = sha
 
 	p.postOrUpdateCostComment(logger,
 		repoInfos[0].repo.Owner, repoInfos[0].repo.Repo,
@@ -601,20 +602,21 @@ func (p *Pipeline) commitMultiRepoMergeResolution(
 	wsPath, branchName string,
 	repoInfos []mergeRepoPR,
 	importExcludes []string,
-) (bool, error) {
+) (bool, string, error) {
 	committed := false
+	var lastSHA string
 	for _, ri := range repoInfos {
 		repoDir := filepath.Join(wsPath, ri.repo.Name)
 		has, err := p.git.HasChanges(repoDir, ri.repo.BaseBranch)
 		if err != nil {
-			return false, fmt.Errorf("check changes for %s: %w", ri.repo.Name, err)
+			return false, "", fmt.Errorf("check changes for %s: %w", ri.repo.Name, err)
 		}
 		if !has {
 			continue
 		}
 
 		commitMsg := fmt.Sprintf("%s: resolve merge conflicts with %s", job.TicketKey, ri.repo.BaseBranch)
-		_, err = p.git.CommitChanges(
+		sha, err := p.git.CommitChanges(
 			ri.repo.Owner, settings.CommitOwnerFor(ri.repo), ri.repo.Repo, branchName,
 			commitMsg, repoDir, ri.repo.BaseBranch, workItem.Assignee, importExcludes, skipFileGuardrail,
 		)
@@ -622,12 +624,13 @@ func (p *Pipeline) commitMultiRepoMergeResolution(
 			continue
 		}
 		if err != nil {
-			return false, fmt.Errorf("commit merge for %s: %w", ri.repo.Name, err)
+			return false, "", fmt.Errorf("commit merge for %s: %w", ri.repo.Name, err)
 		}
 		committed = true
+		lastSHA = sha
 
 		if err := p.git.SyncWithRemote(repoDir, branchName, importExcludes); err != nil {
-			return false, fmt.Errorf("sync with remote for %s: %w", ri.repo.Name, err)
+			return false, "", fmt.Errorf("sync with remote for %s: %w", ri.repo.Name, err)
 		}
 	}
 
@@ -635,7 +638,7 @@ func (p *Pipeline) commitMultiRepoMergeResolution(
 		logger.Info("Multi-repo merge conflicts resolved via AI",
 			zap.Int("repos", len(repoInfos)))
 	}
-	return committed, nil
+	return committed, lastSHA, nil
 }
 
 // upstreamMergeURL returns the upstream clone URL when fork mode is
@@ -679,7 +682,7 @@ func (p *Pipeline) commitMultiRepoCleanMerge(
 		}
 
 		commitMsg := fmt.Sprintf("%s: merge %s into %s", job.TicketKey, ri.repo.BaseBranch, branchName)
-		_, err = p.git.CommitChanges(
+		sha, err := p.git.CommitChanges(
 			ri.repo.Owner, settings.CommitOwnerFor(ri.repo), ri.repo.Repo, branchName,
 			commitMsg, repoDir, ri.repo.BaseBranch, workItem.Assignee, nil, skipFileGuardrail,
 		)
@@ -690,6 +693,7 @@ func (p *Pipeline) commitMultiRepoCleanMerge(
 			return result, fmt.Errorf("commit clean merge for %s: %w", ri.repo.Name, err)
 		}
 		committed = true
+		result.MergeCommitSHA = sha
 
 		if err := p.git.SyncWithRemote(repoDir, branchName, nil); err != nil {
 			return result, fmt.Errorf("sync with remote for %s: %w", ri.repo.Name, err)
