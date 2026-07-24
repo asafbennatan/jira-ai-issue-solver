@@ -290,6 +290,7 @@ func main() {
 			SkipPRLabel:       config.GitHub.SkipPRLabel,
 		},
 		logger,
+		scanner.WithMergeCommands(),
 	)
 	if err != nil {
 		logger.Fatal("Failed to create merge scanner", zap.Error(err))
