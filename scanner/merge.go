@@ -339,7 +339,7 @@ func (s *MergeScanner) findMergeCommand(
 		// Filter to conversation comments only — sync commands on
 		// file diffs (review comments) are not supported, and the
 		// addressed-marker reply is always a conversation comment.
-		var convComments []models.PRComment
+		convComments := make([]models.PRComment, 0, len(comments))
 		for _, c := range comments {
 			if !c.IsReviewComment {
 				convComments = append(convComments, c)
