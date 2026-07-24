@@ -1905,34 +1905,35 @@ func (s *GitHubServiceImpl) ReplyToComment(owner, repo string, prNumber int, com
 }
 
 // PostIssueComment posts a top-level comment on a PR (via the issues
-// endpoint). Used for replying to conversation comments, which do not
-// support threading.
-func (s *GitHubServiceImpl) PostIssueComment(owner, repo string, prNumber int, body string) error {
+// endpoint) and returns the created comment's ID. Used for replying
+// to conversation comments, which do not support threading.
+func (s *GitHubServiceImpl) PostIssueComment(owner, repo string, prNumber int, body string) (int64, error) {
 	installationID, err := s.getInstallationIDForRepo(owner, repo)
 	if err != nil {
-		return fmt.Errorf("failed to get installation ID: %w", err)
+		return 0, fmt.Errorf("failed to get installation ID: %w", err)
 	}
 
 	ghClient, err := s.getInstallationGitHubClient(installationID)
 	if err != nil {
-		return fmt.Errorf("failed to get installation client: %w", err)
+		return 0, fmt.Errorf("failed to get installation client: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), githubAPITimeout)
 	defer cancel()
 
 	comment := &github.IssueComment{Body: github.Ptr(body)}
-	_, _, err = ghClient.Issues.CreateComment(ctx, owner, repo, prNumber, comment)
+	created, _, err := ghClient.Issues.CreateComment(ctx, owner, repo, prNumber, comment)
 	if err != nil {
-		return fmt.Errorf("failed to post issue comment: %w", err)
+		return 0, fmt.Errorf("failed to post issue comment: %w", err)
 	}
 
 	s.logger.Debug("Posted issue comment",
 		zap.String("owner", owner),
 		zap.String("repo", repo),
-		zap.Int("pr_number", prNumber))
+		zap.Int("pr_number", prNumber),
+		zap.Int64("comment_id", created.GetID()))
 
-	return nil
+	return created.GetID(), nil
 }
 
 // ListIssueComments returns all top-level comments on a PR (via the

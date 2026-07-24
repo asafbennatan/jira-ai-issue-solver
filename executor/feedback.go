@@ -842,7 +842,7 @@ func (p *Pipeline) replyToCommentsOnRepo(
 		} else {
 			contextual := conversationReplyBody(c, replyBody)
 			markedBody := fmt.Sprintf("%s\n%s", contextual, commentfilter.AddressedMarker(c.ID))
-			if err := p.git.PostIssueComment(owner, repo, pr.Number, markedBody); err != nil {
+			if _, err := p.git.PostIssueComment(owner, repo, pr.Number, markedBody); err != nil {
 				logger.Warn("Failed to reply to conversation comment",
 					zap.Int64("comment_id", c.ID),
 					zap.Error(err))
@@ -1002,7 +1002,7 @@ func (p *Pipeline) replyToComments(
 		} else {
 			contextual := conversationReplyBody(c, replyBody)
 			markedBody := fmt.Sprintf("%s\n%s", contextual, commentfilter.AddressedMarker(c.ID))
-			if err := p.git.PostIssueComment(
+			if _, err := p.git.PostIssueComment(
 				settings.Repos[0].Owner, settings.Repos[0].Repo, prDetails.Number, markedBody); err != nil {
 				logger.Warn("Failed to reply to conversation comment",
 					zap.Int64("comment_id", c.ID),
@@ -1050,7 +1050,7 @@ func (p *Pipeline) replyUnableToAddress(
 		} else {
 			contextual := conversationReplyBody(c, replyBody)
 			markedBody := fmt.Sprintf("%s\n%s", contextual, commentfilter.AddressedMarker(c.ID))
-			if err := p.git.PostIssueComment(
+			if _, err := p.git.PostIssueComment(
 				settings.Repos[0].Owner, settings.Repos[0].Repo, prDetails.Number, markedBody); err != nil {
 				logger.Warn("Failed to reply to conversation comment",
 					zap.Int64("comment_id", c.ID),
@@ -1230,7 +1230,7 @@ func (p *Pipeline) postCIFixMarker(
 		return
 	}
 	marker := commentfilter.CIFixAttemptMarker(ciFailures, commitSHA)
-	if err := p.git.PostIssueComment(owner, repo, prNumber, marker); err != nil {
+	if _, err := p.git.PostIssueComment(owner, repo, prNumber, marker); err != nil {
 		logger.Warn("Failed to post CI fix attempt marker", zap.Error(err))
 	}
 }

@@ -160,13 +160,14 @@ func (c *Coordinator) Submit(event Event) (*Job, error) {
 	}
 
 	job := &Job{
-		ID:         generateJobID(),
-		TicketKey:  event.TicketKey,
-		Type:       event.Type,
-		Status:     JobStatusPending,
-		AttemptNum: c.failureCounts[event.TicketKey] + 1,
-		CreatedAt:  now,
-		CleanRetry: event.CleanRetry,
+		ID:            generateJobID(),
+		TicketKey:     event.TicketKey,
+		Type:          event.Type,
+		Status:        JobStatusPending,
+		AttemptNum:    c.failureCounts[event.TicketKey] + 1,
+		CreatedAt:     now,
+		CleanRetry:    event.CleanRetry,
+		CommandSource: event.CommandSource,
 	}
 
 	c.jobs[job.ID] = job
@@ -398,6 +399,10 @@ func (c *Coordinator) snapshot(job *Job) *Job {
 	if job.Result != nil {
 		r := *job.Result
 		s.Result = &r
+	}
+	if job.CommandSource != nil {
+		cs := *job.CommandSource
+		s.CommandSource = &cs
 	}
 	return &s
 }
