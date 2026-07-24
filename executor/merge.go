@@ -30,16 +30,18 @@ func (p *Pipeline) executeMerge(ctx context.Context, job *jobmanager.Job) (resul
 	// --- Step 1: Fetch work item ---
 	workItem, err := p.tracker.GetWorkItem(job.TicketKey)
 	if err != nil {
+		p.postPreflightFailureReply(logger, job, err)
 		return result, fmt.Errorf("get work item: %w", err)
 	}
 
 	// --- Step 2: Resolve project settings ---
 	settings, err := p.projects.ResolveProject(*workItem)
 	if err != nil {
+		p.postPreflightFailureReply(logger, job, err)
 		return result, fmt.Errorf("resolve project: %w", err)
 	}
 
-	// Post merge command reply before dispatching to single/multi
+	// Post sync command reply before dispatching to single/multi
 	// repo. The reply is edited with the outcome in a defer.
 	var mergeReplyID int64
 	branchName := fmt.Sprintf("%s/%s", p.cfg.BotUsername, job.TicketKey)
@@ -725,7 +727,7 @@ func (p *Pipeline) handleMergeFailure(
 }
 
 // commandSourceBaseBranch returns the base branch for the repo that
-// the merge command was posted on. Falls back to the first repo's
+// the sync command was posted on. Falls back to the first repo's
 // base branch when CommandSource is nil or does not match any repo.
 func (p *Pipeline) commandSourceBaseBranch(src *jobmanager.CommandSource, settings *models.ProjectSettings) string {
 	if src != nil {
@@ -739,7 +741,7 @@ func (p *Pipeline) commandSourceBaseBranch(src *jobmanager.CommandSource, settin
 }
 
 // postMergeCommandReply posts the initial acknowledgment reply for a
-// merge command. Returns the reply comment ID (for later editing) or
+// sync command. Returns the reply comment ID (for later editing) or
 // 0 if posting failed. Best-effort: failures are logged but do not
 // block the merge.
 func (p *Pipeline) postMergeCommandReply(
@@ -754,7 +756,7 @@ func (p *Pipeline) postMergeCommandReply(
 
 	id, err := p.git.PostIssueComment(src.Owner, src.Repo, src.PRNumber, body)
 	if err != nil {
-		logger.Warn("Failed to post merge command reply",
+		logger.Warn("Failed to post sync command reply",
 			zap.String("repo", src.Owner+"/"+src.Repo),
 			zap.Int64("command_comment_id", commandCommentID),
 			zap.Error(err))
@@ -763,7 +765,7 @@ func (p *Pipeline) postMergeCommandReply(
 	return id
 }
 
-// updateMergeCommandReply edits the merge command reply with the
+// updateMergeCommandReply edits the sync command reply with the
 // outcome. Best-effort: failures are logged but do not affect the
 // merge result.
 func (p *Pipeline) updateMergeCommandReply(
@@ -792,9 +794,29 @@ func (p *Pipeline) updateMergeCommandReply(
 	body += "\n" + commentfilter.AddressedMarker(commandCommentID)
 
 	if err := p.git.UpdateIssueComment(src.Owner, src.Repo, replyID, body); err != nil {
-		logger.Warn("Failed to update merge command reply",
+		logger.Warn("Failed to update sync command reply",
 			zap.String("repo", src.Owner+"/"+src.Repo),
 			zap.Int64("reply_id", replyID),
+			zap.Error(err))
+	}
+}
+
+// postPreflightFailureReply posts an addressed failure reply when the
+// merge pipeline fails before the normal reply lifecycle is set up
+// (e.g., GetWorkItem or ResolveProject fails). Without this, the
+// command stays unaddressed and the scanner re-detects it every cycle.
+func (p *Pipeline) postPreflightFailureReply(logger *zap.Logger, job *jobmanager.Job, preflightErr error) {
+	if job.CommandSource == nil {
+		return
+	}
+	src := job.CommandSource
+	body := fmt.Sprintf("Failed to process sync command: %s\n%s",
+		preflightErr.Error(),
+		commentfilter.AddressedMarker(src.CommentID))
+
+	if _, err := p.git.PostIssueComment(src.Owner, src.Repo, src.PRNumber, body); err != nil {
+		logger.Warn("Failed to post preflight failure reply",
+			zap.String("repo", src.Owner+"/"+src.Repo),
 			zap.Error(err))
 	}
 }

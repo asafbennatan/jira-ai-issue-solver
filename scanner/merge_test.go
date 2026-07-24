@@ -1094,7 +1094,7 @@ func TestMergeScanner_SkipPRLabel_MultiRepo_SkipsOnlyLabeledPR(t *testing.T) {
 
 // --- Merge command detection ---
 
-func TestMergeScanner_MergeCommand_DetectedAndSubmitted(t *testing.T) {
+func TestMergeScanner_SyncCommand_DetectedAndSubmitted(t *testing.T) {
 	d := newMergeDeps()
 
 	mergeable := true
@@ -1104,7 +1104,7 @@ func TestMergeScanner_MergeCommand_DetectedAndSubmitted(t *testing.T) {
 
 	d.prs.GetPRCommentsFunc = func(_, _ string, _ int, _ time.Time) ([]models.PRComment, error) {
 		return []models.PRComment{
-			{ID: 100, Author: models.Author{Username: "reviewer"}, Body: "@ai-bot merge", Timestamp: time.Now()},
+			{ID: 100, Author: models.Author{Username: "reviewer"}, Body: "@ai-bot sync", Timestamp: time.Now()},
 		}, nil
 	}
 
@@ -1133,7 +1133,7 @@ func TestMergeScanner_MergeCommand_DetectedAndSubmitted(t *testing.T) {
 	}
 }
 
-func TestMergeScanner_MergeCommand_AlreadyAddressed(t *testing.T) {
+func TestMergeScanner_SyncCommand_AlreadyAddressed(t *testing.T) {
 	d := newMergeDeps()
 
 	mergeable := true
@@ -1143,7 +1143,7 @@ func TestMergeScanner_MergeCommand_AlreadyAddressed(t *testing.T) {
 
 	d.prs.GetPRCommentsFunc = func(_, _ string, _ int, _ time.Time) ([]models.PRComment, error) {
 		return []models.PRComment{
-			{ID: 100, Author: models.Author{Username: "reviewer"}, Body: "@ai-bot merge"},
+			{ID: 100, Author: models.Author{Username: "reviewer"}, Body: "@ai-bot sync"},
 			{ID: 200, Author: models.Author{Username: "ai-bot[bot]"}, Body: "Merging from main -> ai-bot/PROJ-1\n<!-- addressed: 100 -->"},
 		}, nil
 	}
@@ -1157,12 +1157,13 @@ func TestMergeScanner_MergeCommand_AlreadyAddressed(t *testing.T) {
 	runOneMergeScan(t, d.scanner(t, scanner.WithMergeCommands()))
 
 	if submitted {
-		t.Error("expected no merge event when command already addressed by bot reply")
+		t.Error("expected no merge event when sync command already addressed by bot reply")
 	}
 }
 
-func TestMergeScanner_MergeCommand_SkippedWithoutOption(t *testing.T) {
+func TestMergeScanner_SyncCommand_AlreadyAddressed_BotSuffix(t *testing.T) {
 	d := newMergeDeps()
+	d.cfg.BotUsername = "ai-bot[bot]"
 
 	mergeable := true
 	d.mergeCheck.GetPRMergeabilityFunc = func(_, _ string, _ int) (*models.PRMergeState, error) {
@@ -1171,34 +1172,8 @@ func TestMergeScanner_MergeCommand_SkippedWithoutOption(t *testing.T) {
 
 	d.prs.GetPRCommentsFunc = func(_, _ string, _ int, _ time.Time) ([]models.PRComment, error) {
 		return []models.PRComment{
-			{ID: 100, Author: models.Author{Username: "reviewer"}, Body: "@ai-bot merge"},
-		}, nil
-	}
-
-	submitted := false
-	d.submitter.SubmitFunc = func(_ jobmanager.Event) (*jobmanager.Job, error) {
-		submitted = true
-		return &jobmanager.Job{}, nil
-	}
-
-	runOneMergeScan(t, d.scanner(t))
-
-	if submitted {
-		t.Error("expected no merge event when merge commands not configured")
-	}
-}
-
-func TestMergeScanner_MergeCommand_IgnoresBotOwnComment(t *testing.T) {
-	d := newMergeDeps()
-
-	mergeable := true
-	d.mergeCheck.GetPRMergeabilityFunc = func(_, _ string, _ int) (*models.PRMergeState, error) {
-		return &models.PRMergeState{Mergeable: &mergeable, BaseBranch: "main"}, nil
-	}
-
-	d.prs.GetPRCommentsFunc = func(_, _ string, _ int, _ time.Time) ([]models.PRComment, error) {
-		return []models.PRComment{
-			{ID: 100, Author: models.Author{Username: "ai-bot[bot]"}, Body: "@ai-bot merge"},
+			{ID: 100, Author: models.Author{Username: "reviewer"}, Body: "@ai-bot sync"},
+			{ID: 200, Author: models.Author{Username: "ai-bot[bot]"}, Body: "Merging from main -> ai-bot/PROJ-1\n<!-- addressed: 100 -->"},
 		}, nil
 	}
 
@@ -1211,11 +1186,65 @@ func TestMergeScanner_MergeCommand_IgnoresBotOwnComment(t *testing.T) {
 	runOneMergeScan(t, d.scanner(t, scanner.WithMergeCommands()))
 
 	if submitted {
-		t.Error("expected no merge event for bot's own merge command")
+		t.Error("expected no merge event when bot username has [bot] suffix and command is already addressed")
 	}
 }
 
-func TestMergeScanner_MergeCommand_SkippedWhenPRHasSkipLabel(t *testing.T) {
+func TestMergeScanner_SyncCommand_SkippedWithoutOption(t *testing.T) {
+	d := newMergeDeps()
+
+	mergeable := true
+	d.mergeCheck.GetPRMergeabilityFunc = func(_, _ string, _ int) (*models.PRMergeState, error) {
+		return &models.PRMergeState{Mergeable: &mergeable, BaseBranch: "main"}, nil
+	}
+
+	d.prs.GetPRCommentsFunc = func(_, _ string, _ int, _ time.Time) ([]models.PRComment, error) {
+		return []models.PRComment{
+			{ID: 100, Author: models.Author{Username: "reviewer"}, Body: "@ai-bot sync"},
+		}, nil
+	}
+
+	submitted := false
+	d.submitter.SubmitFunc = func(_ jobmanager.Event) (*jobmanager.Job, error) {
+		submitted = true
+		return &jobmanager.Job{}, nil
+	}
+
+	runOneMergeScan(t, d.scanner(t))
+
+	if submitted {
+		t.Error("expected no merge event when sync commands not configured")
+	}
+}
+
+func TestMergeScanner_SyncCommand_IgnoresBotOwnComment(t *testing.T) {
+	d := newMergeDeps()
+
+	mergeable := true
+	d.mergeCheck.GetPRMergeabilityFunc = func(_, _ string, _ int) (*models.PRMergeState, error) {
+		return &models.PRMergeState{Mergeable: &mergeable, BaseBranch: "main"}, nil
+	}
+
+	d.prs.GetPRCommentsFunc = func(_, _ string, _ int, _ time.Time) ([]models.PRComment, error) {
+		return []models.PRComment{
+			{ID: 100, Author: models.Author{Username: "ai-bot[bot]"}, Body: "@ai-bot sync"},
+		}, nil
+	}
+
+	submitted := false
+	d.submitter.SubmitFunc = func(_ jobmanager.Event) (*jobmanager.Job, error) {
+		submitted = true
+		return &jobmanager.Job{}, nil
+	}
+
+	runOneMergeScan(t, d.scanner(t, scanner.WithMergeCommands()))
+
+	if submitted {
+		t.Error("expected no merge event for bot's own sync command")
+	}
+}
+
+func TestMergeScanner_SyncCommand_SkippedWhenPRHasSkipLabel(t *testing.T) {
 	d := newMergeDeps()
 	d.cfg.SkipPRLabel = "ai-bot-skip"
 
@@ -1230,7 +1259,7 @@ func TestMergeScanner_MergeCommand_SkippedWhenPRHasSkipLabel(t *testing.T) {
 
 	d.prs.GetPRCommentsFunc = func(_, _ string, _ int, _ time.Time) ([]models.PRComment, error) {
 		return []models.PRComment{
-			{ID: 100, Author: models.Author{Username: "reviewer"}, Body: "@ai-bot merge"},
+			{ID: 100, Author: models.Author{Username: "reviewer"}, Body: "@ai-bot sync"},
 		}, nil
 	}
 
@@ -1247,7 +1276,7 @@ func TestMergeScanner_MergeCommand_SkippedWhenPRHasSkipLabel(t *testing.T) {
 	}
 }
 
-func TestMergeScanner_MergeCommand_NoCommandPresent(t *testing.T) {
+func TestMergeScanner_SyncCommand_NoCommandPresent(t *testing.T) {
 	d := newMergeDeps()
 
 	mergeable := true
@@ -1270,11 +1299,11 @@ func TestMergeScanner_MergeCommand_NoCommandPresent(t *testing.T) {
 	runOneMergeScan(t, d.scanner(t, scanner.WithMergeCommands()))
 
 	if submitted {
-		t.Error("expected no merge event when no merge command present")
+		t.Error("expected no merge event when no sync command present")
 	}
 }
 
-func TestMergeScanner_MergeCommand_CommentFetchError(t *testing.T) {
+func TestMergeScanner_SyncCommand_CommentFetchError(t *testing.T) {
 	d := newMergeDeps()
 
 	mergeable := true
@@ -1299,7 +1328,7 @@ func TestMergeScanner_MergeCommand_CommentFetchError(t *testing.T) {
 	}
 }
 
-func TestMergeScanner_MergeCommand_IgnoresReviewComments(t *testing.T) {
+func TestMergeScanner_SyncCommand_IgnoresReviewComments(t *testing.T) {
 	d := newMergeDeps()
 
 	mergeable := true
@@ -1309,7 +1338,7 @@ func TestMergeScanner_MergeCommand_IgnoresReviewComments(t *testing.T) {
 
 	d.prs.GetPRCommentsFunc = func(_, _ string, _ int, _ time.Time) ([]models.PRComment, error) {
 		return []models.PRComment{
-			{ID: 100, Author: models.Author{Username: "reviewer"}, Body: "@ai-bot merge", IsReviewComment: true},
+			{ID: 100, Author: models.Author{Username: "reviewer"}, Body: "@ai-bot sync", IsReviewComment: true},
 		}, nil
 	}
 
@@ -1322,11 +1351,11 @@ func TestMergeScanner_MergeCommand_IgnoresReviewComments(t *testing.T) {
 	runOneMergeScan(t, d.scanner(t, scanner.WithMergeCommands()))
 
 	if submitted {
-		t.Error("expected no merge event for review comment merge commands")
+		t.Error("expected no merge event for review comment sync commands")
 	}
 }
 
-func TestMergeScanner_MergeCommand_ConflictsTakePriority(t *testing.T) {
+func TestMergeScanner_SyncCommand_ConflictsTakePriority(t *testing.T) {
 	d := newMergeDeps()
 	d.cfg.IdleDays = 0
 

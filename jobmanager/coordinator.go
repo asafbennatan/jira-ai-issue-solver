@@ -159,6 +159,12 @@ func (c *Coordinator) Submit(event Event) (*Job, error) {
 		return nil, ErrBudgetExceeded
 	}
 
+	var cmdSrc *CommandSource
+	if event.CommandSource != nil {
+		cloned := *event.CommandSource
+		cmdSrc = &cloned
+	}
+
 	job := &Job{
 		ID:            generateJobID(),
 		TicketKey:     event.TicketKey,
@@ -167,7 +173,7 @@ func (c *Coordinator) Submit(event Event) (*Job, error) {
 		AttemptNum:    c.failureCounts[event.TicketKey] + 1,
 		CreatedAt:     now,
 		CleanRetry:    event.CleanRetry,
-		CommandSource: event.CommandSource,
+		CommandSource: cmdSrc,
 	}
 
 	c.jobs[job.ID] = job

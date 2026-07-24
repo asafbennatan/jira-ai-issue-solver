@@ -936,9 +936,9 @@ func assertIDs(t *testing.T, got, want []int64) {
 	}
 }
 
-// --- IsMergeCommand ---
+// --- IsSyncCommand ---
 
-func TestIsMergeCommand(t *testing.T) {
+func TestIsSyncCommand(t *testing.T) {
 	tests := []struct {
 		name        string
 		body        string
@@ -947,67 +947,67 @@ func TestIsMergeCommand(t *testing.T) {
 	}{
 		{
 			name:        "basic match",
-			body:        "@ai-bot merge",
+			body:        "@ai-bot sync",
 			botUsername: "ai-bot",
 			want:        true,
 		},
 		{
 			name:        "at start with trailing text",
-			body:        "@ai-bot merge\n\nPlease pull main.",
+			body:        "@ai-bot sync\n\nPlease pull main.",
 			botUsername: "ai-bot",
 			want:        true,
 		},
 		{
 			name:        "at end of comment",
-			body:        "CI is broken, can you\n@ai-bot merge",
+			body:        "CI is broken, can you\n@ai-bot sync",
 			botUsername: "ai-bot",
 			want:        true,
 		},
 		{
 			name:        "inline in comment",
-			body:        "Hey @ai-bot merge please",
+			body:        "Hey @ai-bot sync please",
 			botUsername: "ai-bot",
 			want:        true,
 		},
 		{
 			name:        "case insensitive",
-			body:        "@AI-BOT Merge",
+			body:        "@AI-BOT Sync",
 			botUsername: "ai-bot",
 			want:        true,
 		},
 		{
 			name:        "with [bot] suffix",
-			body:        "@ai-bot[bot] merge",
+			body:        "@ai-bot[bot] sync",
 			botUsername: "ai-bot",
 			want:        true,
 		},
 		{
 			name:        "config username has [bot] suffix",
-			body:        "@my-bot merge",
+			body:        "@my-bot sync",
 			botUsername: "my-bot[bot]",
 			want:        true,
 		},
 		{
-			name:        "word boundary prevents merging",
-			body:        "@ai-bot merging main",
+			name:        "word boundary prevents syncing",
+			body:        "@ai-bot syncing main",
 			botUsername: "ai-bot",
 			want:        false,
 		},
 		{
-			name:        "newline between mention and merge",
-			body:        "@ai-bot\nmerge",
+			name:        "newline between mention and sync",
+			body:        "@ai-bot\nsync",
 			botUsername: "ai-bot",
 			want:        false,
 		},
 		{
 			name:        "mention inside larger token",
-			body:        "contact-foo@ai-bot merge",
+			body:        "contact-foo@ai-bot sync",
 			botUsername: "ai-bot",
 			want:        false,
 		},
 		{
 			name:        "no match without mention",
-			body:        "merge main into this branch",
+			body:        "sync main into this branch",
 			botUsername: "ai-bot",
 			want:        false,
 		},
@@ -1019,19 +1019,19 @@ func TestIsMergeCommand(t *testing.T) {
 		},
 		{
 			name:        "wrong bot username",
-			body:        "@other-bot merge",
+			body:        "@other-bot sync",
 			botUsername: "ai-bot",
 			want:        false,
 		},
 		{
-			name:        "tab between mention and merge",
-			body:        "@ai-bot\tmerge",
+			name:        "tab between mention and sync",
+			body:        "@ai-bot\tsync",
 			botUsername: "ai-bot",
 			want:        true,
 		},
 		{
-			name:        "multiple spaces between mention and merge",
-			body:        "@ai-bot   merge",
+			name:        "multiple spaces between mention and sync",
+			body:        "@ai-bot   sync",
 			botUsername: "ai-bot",
 			want:        true,
 		},
@@ -1039,9 +1039,9 @@ func TestIsMergeCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := commentfilter.IsMergeCommand(tt.body, tt.botUsername)
+			got := commentfilter.IsSyncCommand(tt.body, tt.botUsername)
 			if got != tt.want {
-				t.Errorf("IsMergeCommand(%q, %q) = %v, want %v",
+				t.Errorf("IsSyncCommand(%q, %q) = %v, want %v",
 					tt.body, tt.botUsername, got, tt.want)
 			}
 		})

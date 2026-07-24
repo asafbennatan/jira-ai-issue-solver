@@ -271,12 +271,12 @@ func BotCommandRe(botUsername, command string) *regexp.Regexp {
 	return regexp.MustCompile(pattern)
 }
 
-// IsMergeCommand reports whether body contains an @<botUsername> merge
+// IsSyncCommand reports whether body contains an @<botUsername> sync
 // directive. The match is case-insensitive and accepts an optional
 // [bot] suffix on the username. Recompiles the regex on each call;
 // for checking multiple bodies, use [BotCommandRe] once and reuse.
-func IsMergeCommand(body, botUsername string) bool {
-	return BotCommandRe(botUsername, "merge").MatchString(body)
+func IsSyncCommand(body, botUsername string) bool {
+	return BotCommandRe(botUsername, "sync").MatchString(body)
 }
 
 // shouldSkipBotReply returns true if a known bot is replying to our

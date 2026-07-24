@@ -60,7 +60,7 @@ type MergeScannerConfig struct {
 // instead of merged.
 //
 // When configured with [WithMergeCommands], the scanner also detects
-// @botname merge commands in PR comments and submits merge events
+// @botname sync commands in PR comments and submits merge events
 // for them.
 type MergeScanner struct {
 	searcher             IssueSearcher
@@ -82,8 +82,8 @@ type MergeScanner struct {
 // [MergeScanner]. Pass to [NewMergeScanner].
 type MergeScannerOption func(*MergeScanner)
 
-// WithMergeCommands enables detection of @botname merge commands in
-// PR comments. When a user posts @botname merge on a PR, the scanner
+// WithMergeCommands enables detection of @botname sync commands in
+// PR comments. When a user posts @botname sync on a PR, the scanner
 // submits a merge event. The executor posts a reply to acknowledge
 // the command and edits it with the outcome.
 func WithMergeCommands() MergeScannerOption {
@@ -222,7 +222,7 @@ func (s *MergeScanner) scan(ctx context.Context) {
 
 // checkAndSubmit checks a ticket's PRs for merge conflicts and
 // submits a merge event if any PR is unmergeable. When merge commands
-// are enabled, also checks for @botname merge commands in PR comments.
+// are enabled, also checks for @botname sync commands in PR comments.
 // Returns true if the scan cycle should stop (circuit breaker open or
 // shutdown).
 func (s *MergeScanner) checkAndSubmit(item models.WorkItem) bool {
@@ -251,7 +251,7 @@ func (s *MergeScanner) checkAndSubmit(item models.WorkItem) bool {
 		TicketKey: item.Key,
 	}
 
-	// If no conflicts, check for merge commands.
+	// If no conflicts, check for sync commands.
 	if !shouldSubmit && s.mergeCommandsEnabled {
 		for _, head := range heads {
 			if src := s.findMergeCommand(logger, repos, head); src != nil {
@@ -300,7 +300,7 @@ func (s *MergeScanner) submitMergeEvent(logger *zap.Logger, event jobmanager.Eve
 }
 
 // findMergeCommand checks all repos for PRs containing an unaddressed
-// @botname merge command in conversation comments. Uses the same
+// @botname sync command in conversation comments. Uses the same
 // addressed-marker pattern as the feedback pipeline: the executor
 // posts a reply with <!-- addressed: ID -->, and BotRepliedTo detects
 // it on subsequent scans. Returns nil if no unaddressed command exists.
@@ -310,12 +310,12 @@ func (s *MergeScanner) findMergeCommand(
 	head string,
 ) *jobmanager.CommandSource {
 	normBot := commentfilter.NormalizeUsername(s.cfg.BotUsername)
-	mergeRe := commentfilter.BotCommandRe(s.cfg.BotUsername, "merge")
+	mergeRe := commentfilter.BotCommandRe(s.cfg.BotUsername, "sync")
 
 	for _, r := range repos {
 		pr, err := s.prs.GetPRForBranch(r.Owner, r.Repo, head)
 		if err != nil {
-			logger.Warn("Error looking up PR for merge command",
+			logger.Warn("Error looking up PR for sync command",
 				zap.String("repo", r.Owner+"/"+r.Repo),
 				zap.Error(err))
 			continue
@@ -330,13 +330,13 @@ func (s *MergeScanner) findMergeCommand(
 
 		comments, err := s.prs.GetPRComments(r.Owner, r.Repo, pr.Number, time.Time{})
 		if err != nil {
-			logger.Warn("Failed to fetch PR comments for merge command check",
+			logger.Warn("Failed to fetch PR comments for sync command check",
 				zap.String("repo", r.Owner+"/"+r.Repo),
 				zap.Error(err))
 			continue
 		}
 
-		// Filter to conversation comments only — merge commands on
+		// Filter to conversation comments only — sync commands on
 		// file diffs (review comments) are not supported, and the
 		// addressed-marker reply is always a conversation comment.
 		var convComments []models.PRComment
@@ -346,7 +346,7 @@ func (s *MergeScanner) findMergeCommand(
 			}
 		}
 
-		addressed := commentfilter.BotRepliedTo(convComments, s.cfg.BotUsername)
+		addressed := commentfilter.BotRepliedTo(convComments, normBot)
 
 		for _, c := range convComments {
 			if commentfilter.NormalizeUsername(c.Author.Username) == normBot {
@@ -361,7 +361,7 @@ func (s *MergeScanner) findMergeCommand(
 				continue
 			}
 
-			logger.Info("Found merge command",
+			logger.Info("Found sync command",
 				zap.String("repo", r.Owner+"/"+r.Repo),
 				zap.Int("pr", pr.Number),
 				zap.String("author", c.Author.Username))

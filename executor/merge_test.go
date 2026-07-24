@@ -532,3 +532,37 @@ func TestExecuteMerge_NoCommandSource_NoReply(t *testing.T) {
 		t.Error("expected no comment post when CommandSource is nil")
 	}
 }
+
+func TestExecuteMerge_CommandSource_PreflightFailure_PostsAddressedReply(t *testing.T) {
+	d := newTestDeps(t)
+	d.tracker.GetWorkItemFunc = func(_ string) (*models.WorkItem, error) {
+		return nil, fmt.Errorf("ticket not found")
+	}
+
+	var postedBody string
+	d.git.PostIssueCommentFunc = func(_, _ string, _ int, body string) (int64, error) {
+		postedBody = body
+		return 999, nil
+	}
+
+	p := d.pipeline(t)
+	job := mergeJob("PROJ-1")
+	job.CommandSource = &jobmanager.CommandSource{
+		Owner:     "org",
+		Repo:      "repo",
+		PRNumber:  42,
+		CommentID: 100,
+	}
+
+	_, err := p.Execute(context.Background(), job)
+	if err == nil {
+		t.Fatal("expected error from preflight failure")
+	}
+
+	if !strings.Contains(postedBody, "<!-- addressed: 100 -->") {
+		t.Errorf("expected addressed marker in preflight failure reply, got %q", postedBody)
+	}
+	if !strings.Contains(postedBody, "Failed") {
+		t.Errorf("expected failure message in preflight reply, got %q", postedBody)
+	}
+}
