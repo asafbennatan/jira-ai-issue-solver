@@ -514,7 +514,10 @@ func buildTriageCriteria(config *models.Config) (models.SearchCriteria, bool) {
 	}
 
 	if len(projectKeys) == 0 || len(labels) == 0 {
-		return models.SearchCriteria{}, false
+		return models.SearchCriteria{
+			ProjectKeys: []string{},
+			Labels:      []string{},
+		}, false
 	}
 
 	return models.SearchCriteria{

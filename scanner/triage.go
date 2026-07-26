@@ -159,7 +159,7 @@ func (s *TriageLabelScanner) processItem(item models.WorkItem) {
 		return
 	}
 
-	if strings.EqualFold(item.Status, tl.NewStatus) {
+	if item.Status == tl.NewStatus {
 		return
 	}
 

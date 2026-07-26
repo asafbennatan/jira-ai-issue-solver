@@ -1351,6 +1351,11 @@ func (p *ProjectConfig) validate(index int) error {
 		if p.TriageLabels.Stale == "" {
 			return fmt.Errorf("%s.triage_labels.stale is required when active labels are configured", prefix)
 		}
+		for _, label := range p.TriageLabels.Active {
+			if strings.EqualFold(p.TriageLabels.Stale, label) {
+				return fmt.Errorf("%s.triage_labels.stale %q must not overlap an active label", prefix, p.TriageLabels.Stale)
+			}
+		}
 	}
 
 	return nil

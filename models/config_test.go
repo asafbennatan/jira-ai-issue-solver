@@ -2122,6 +2122,16 @@ func TestProjectConfig_ValidateTriageLabels(t *testing.T) {
 			wantErr: "triage_labels.active must not contain empty strings",
 		},
 		{
+			name:    "stale overlaps active label",
+			triage:  TriageLabels{Active: []string{"label1", "label2"}, Stale: "label1", NewStatus: "New"},
+			wantErr: "triage_labels.stale",
+		},
+		{
+			name:    "stale overlaps active label case-insensitive",
+			triage:  TriageLabels{Active: []string{"Label1"}, Stale: "label1", NewStatus: "New"},
+			wantErr: "triage_labels.stale",
+		},
+		{
 			name:    "fully configured is valid",
 			triage:  TriageLabels{Active: []string{"label1", "label2"}, Stale: "stale", NewStatus: "New"},
 			wantErr: "",

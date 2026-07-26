@@ -471,35 +471,10 @@ func buildTriageScanner(t *testing.T, d *triageDeps) *scanner.TriageLabelScanner
 	return s
 }
 
+// runOneTriageScan runs a single scan cycle synchronously via the
+// exported ScanOnce method. No goroutine, no timing, deterministic.
 func runOneTriageScan(t *testing.T, d *triageDeps) {
 	t.Helper()
-
-	scanned := make(chan struct{}, 1)
-	orig := d.searcher.SearchWorkItemsFunc
-	d.searcher.SearchWorkItemsFunc = func(c models.SearchCriteria) ([]models.WorkItem, error) {
-		defer func() {
-			select {
-			case scanned <- struct{}{}:
-			default:
-			}
-		}()
-		return orig(c)
-	}
-
 	s := buildTriageScanner(t, d)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	if err := s.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-
-	select {
-	case <-scanned:
-	case <-time.After(5 * time.Second):
-		t.Fatal("triage scan did not complete within timeout")
-	}
-
-	s.Stop()
+	s.ScanOnce(context.Background())
 }
