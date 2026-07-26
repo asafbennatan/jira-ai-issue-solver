@@ -2080,3 +2080,68 @@ guardrails:
 		}
 	})
 }
+
+func TestProjectConfig_ValidateTriageLabels(t *testing.T) {
+	base := func() ProjectConfig {
+		return ProjectConfig{
+			ProjectKeys: ProjectKeys{"TEST"},
+			StatusTransitions: TicketTypeStatusTransitions{
+				"Bug": {Todo: "To Do", InProgress: "In Progress", InReview: "In Review"},
+			},
+			Components: ComponentMap{"c": ComponentConfig{Workspace: "default"}},
+			Workspaces: map[string]WorkspaceConfig{
+				"default": {Repos: []RepoEntry{{Name: "r", URL: "https://github.com/o/r.git", Profile: "p"}}},
+			},
+			Profiles: map[string]Profile{"p": {}},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		triage  TriageLabels
+		wantErr string
+	}{
+		{
+			name:    "no triage config is valid",
+			triage:  TriageLabels{},
+			wantErr: "",
+		},
+		{
+			name:    "active set with empty new_status",
+			triage:  TriageLabels{Active: []string{"label1"}, Stale: "stale", NewStatus: ""},
+			wantErr: "triage_labels.new_status is required",
+		},
+		{
+			name:    "active set with empty stale",
+			triage:  TriageLabels{Active: []string{"label1"}, Stale: "", NewStatus: "New"},
+			wantErr: "triage_labels.stale is required",
+		},
+		{
+			name:    "active list contains empty string",
+			triage:  TriageLabels{Active: []string{"label1", ""}, Stale: "stale", NewStatus: "New"},
+			wantErr: "triage_labels.active must not contain empty strings",
+		},
+		{
+			name:    "fully configured is valid",
+			triage:  TriageLabels{Active: []string{"label1", "label2"}, Stale: "stale", NewStatus: "New"},
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pc := base()
+			pc.TriageLabels = tt.triage
+			err := pc.validate(0)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("validate() unexpected error: %v", err)
+				}
+			} else {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("validate() error = %v, want error containing %q", err, tt.wantErr)
+				}
+			}
+		})
+	}
+}

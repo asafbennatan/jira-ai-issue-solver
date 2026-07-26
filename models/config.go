@@ -1340,6 +1340,11 @@ func (p *ProjectConfig) validate(index int) error {
 	}
 
 	if len(p.TriageLabels.Active) > 0 {
+		for _, label := range p.TriageLabels.Active {
+			if label == "" {
+				return fmt.Errorf("%s.triage_labels.active must not contain empty strings", prefix)
+			}
+		}
 		if p.TriageLabels.NewStatus == "" {
 			return fmt.Errorf("%s.triage_labels.new_status is required when active labels are configured", prefix)
 		}
