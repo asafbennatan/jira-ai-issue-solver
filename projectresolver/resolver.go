@@ -74,6 +74,12 @@ func (r *ConfigResolver) ResolveProject(workItem models.WorkItem) (*models.Proje
 		maxTicketCost = *pc.MaxTicketCostUSD
 	}
 
+	prVL := pc.PRValidationLabels
+	if prVL.CostCapExceeded == nil {
+		defaultLabel := models.DefaultCostCapLabel
+		prVL.CostCapExceeded = &defaultLabel
+	}
+
 	return &models.ProjectSettings{
 		Repos:                repos,
 		RootRepoURL:          ws.RootRepo,
@@ -86,7 +92,7 @@ func (r *ConfigResolver) ResolveProject(workItem models.WorkItem) (*models.Proje
 		Container:            ws.Container,
 		FailureLabels:        pc.FailureLabels,
 		LifecycleLabels:      pc.LifecycleLabels,
-		PRValidationLabels:   pc.PRValidationLabels,
+		PRValidationLabels:   prVL,
 		MergedStatus:         transitions.Merged,
 		ForkMode:             pc.ForkMode,
 		GitHubUsername:       ghUsername,
