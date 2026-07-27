@@ -152,3 +152,48 @@ func (p *Pipeline) clearPRValidationLabels(
 		}
 	}
 }
+
+// applyCostCapPRLabel applies or removes the cost-cap-exceeded label
+// on all open PRs for the given ticket across all configured repos.
+// When exceeded is true, the label is set and other validation labels
+// are removed (mutual exclusivity). When exceeded is false, only the
+// cost cap label is removed. All operations are best-effort.
+func (p *Pipeline) applyCostCapPRLabel(
+	logger *zap.Logger,
+	ticketKey string,
+	settings *models.ProjectSettings,
+	exceeded bool,
+) {
+	label := settings.PRValidationLabels.CostCapLabel()
+	if label == "" {
+		return
+	}
+
+	branchName := fmt.Sprintf("%s/%s", p.cfg.BotUsername, ticketKey)
+	heads := settings.PRHeads(branchName)
+
+	for _, repo := range settings.Repos {
+		pr, err := p.findPRByHeadsOptional(repo.Owner, repo.Repo, heads)
+		if err != nil {
+			logger.Debug("Failed to find PR for cost cap label",
+				zap.String("repo", repo.Owner+"/"+repo.Repo),
+				zap.Error(err))
+			continue
+		}
+		if pr == nil {
+			continue
+		}
+
+		if exceeded {
+			p.setPRValidationLabel(logger, repo.Owner, repo.Repo,
+				pr.Number, settings.PRValidationLabels, label)
+		} else {
+			if err := p.git.RemovePRLabel(repo.Owner, repo.Repo, pr.Number, label); err != nil {
+				logger.Debug("Failed to remove cost cap PR label",
+					zap.String("repo", repo.Owner+"/"+repo.Repo),
+					zap.Int("pr", pr.Number),
+					zap.Error(err))
+			}
+		}
+	}
+}

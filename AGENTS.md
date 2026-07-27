@@ -110,9 +110,10 @@ When the `merged` label is applied, the scanner also transitions the ticket to t
 
 ### PR Validation Labels
 
-Configurable GitHub PR labels (`pr_validation_labels` in project config) applied when the AI session reports a problem. Labels are mutually exclusive: at most one is set on a PR at any time. Empty strings disable the corresponding label. Suggested values: `ai-validation-failed` and `ai-nonzero-exit`.
+Configurable GitHub PR labels (`pr_validation_labels` in project config) applied when the AI session reports a problem or the bot cannot proceed. Labels are mutually exclusive: at most one is set on a PR at any time. Empty strings disable the corresponding label. Suggested values: `ai-validation-failed`, `ai-nonzero-exit`, and `ai-budget-exceeded`.
 - **`validation_failed`**: Applied when the AI session explicitly reports `validation_passed: false`.
 - **`nonzero_exit`**: Applied when the AI container exits with a non-zero code (and validation was not explicitly reported as failed).
+- **`cost_cap_exceeded`**: Applied when the per-ticket AI session cost cap has been reached. **Defaults to `"ai-budget-exceeded"` when not configured** (the only label with a non-empty default). Set to `""` to disable. Reflects live state: re-applied if removed while the condition holds, removed when the bot successfully runs again (e.g., after the cap is raised).
 
 Labels are applied when code is pushed (both new-ticket and feedback paths) and cleared when a subsequent push passes validation. When the AI produces no code changes, labels are left unchanged. Label management is best-effort — failures are logged but never block core operations.
 

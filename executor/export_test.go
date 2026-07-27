@@ -84,6 +84,11 @@ func ClearPRValidationLabels(p *Pipeline, logger *zap.Logger, owner, repo string
 	p.clearPRValidationLabels(logger, owner, repo, prNumber, vl)
 }
 
+// ApplyCostCapPRLabel exposes applyCostCapPRLabel for testing.
+func ApplyCostCapPRLabel(p *Pipeline, logger *zap.Logger, ticketKey string, settings *models.ProjectSettings, exceeded bool) {
+	p.applyCostCapPRLabel(logger, ticketKey, settings, exceeded)
+}
+
 // TicketCostPath exposes the ticket cost file path constant for tests.
 const TicketCostPath = ticketCostPath
 

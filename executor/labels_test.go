@@ -561,6 +561,39 @@ func TestSetPRValidationLabel(t *testing.T) {
 		p := d.pipeline(t)
 		executor.SetPRValidationLabel(p, zap.NewNop(), "org", "repo", 42, vl, "ai-validation-failed")
 	})
+
+	t.Run("removes cost cap label when setting validation label", func(t *testing.T) {
+		costCap := models.DefaultCostCapLabel
+		vlAll := models.PRValidationLabels{
+			ValidationFailed: "ai-validation-failed",
+			NonzeroExit:      "ai-nonzero-exit",
+			CostCapExceeded:  &costCap,
+		}
+		var added, removed []string
+		d := newTestDeps(t)
+		d.git.AddPRLabelFunc = func(_, _ string, _ int, label string) error { added = append(added, label); return nil }
+		d.git.RemovePRLabelFunc = func(_, _ string, _ int, label string) error { removed = append(removed, label); return nil }
+
+		p := d.pipeline(t)
+		executor.SetPRValidationLabel(p, zap.NewNop(), "org", "repo", 42, vlAll, "ai-validation-failed")
+
+		if len(added) != 1 || added[0] != "ai-validation-failed" {
+			t.Errorf("added = %v, want [ai-validation-failed]", added)
+		}
+		removedSet := make(map[string]bool, len(removed))
+		for _, l := range removed {
+			removedSet[l] = true
+		}
+		if !removedSet["ai-nonzero-exit"] {
+			t.Error("expected ai-nonzero-exit to be removed")
+		}
+		if !removedSet[models.DefaultCostCapLabel] {
+			t.Errorf("expected %s to be removed", models.DefaultCostCapLabel)
+		}
+		if len(removed) != 2 {
+			t.Errorf("removed = %v, want exactly 2 entries", removed)
+		}
+	})
 }
 
 func TestClearPRValidationLabels(t *testing.T) {
@@ -674,5 +707,157 @@ func TestSetPipelineLabel_ErrorsAreSwallowed(t *testing.T) {
 		if !removeCalled {
 			t.Error("expected RemoveLabel to be called")
 		}
+	})
+}
+
+func TestApplyCostCapPRLabel(t *testing.T) {
+	costCapLabel := models.DefaultCostCapLabel
+
+	makeSettings := func(repos []models.RepoSettings) *models.ProjectSettings {
+		return &models.ProjectSettings{
+			Repos: repos,
+			PRValidationLabels: models.PRValidationLabels{
+				ValidationFailed: "ai-validation-failed",
+				NonzeroExit:      "ai-nonzero-exit",
+				CostCapExceeded:  &costCapLabel,
+			},
+		}
+	}
+
+	t.Run("applies label and removes others on exceeded", func(t *testing.T) {
+		var added, removed []string
+		d := newTestDeps(t)
+		d.git.GetPRForBranchFunc = func(_, _, _ string) (*models.PRDetails, error) {
+			return &models.PRDetails{Number: 42}, nil
+		}
+		d.git.AddPRLabelFunc = func(_, _ string, _ int, label string) error { added = append(added, label); return nil }
+		d.git.RemovePRLabelFunc = func(_, _ string, _ int, label string) error { removed = append(removed, label); return nil }
+
+		settings := makeSettings([]models.RepoSettings{{Owner: "org", Repo: "repo"}})
+		p := d.pipeline(t)
+		executor.ApplyCostCapPRLabel(p, zap.NewNop(), "TEST-1", settings, true)
+
+		if len(added) != 1 || added[0] != models.DefaultCostCapLabel {
+			t.Errorf("added = %v, want [%s]", added, models.DefaultCostCapLabel)
+		}
+		removedSet := make(map[string]bool, len(removed))
+		for _, l := range removed {
+			removedSet[l] = true
+		}
+		if !removedSet["ai-validation-failed"] {
+			t.Error("expected ai-validation-failed to be removed")
+		}
+		if !removedSet["ai-nonzero-exit"] {
+			t.Error("expected ai-nonzero-exit to be removed")
+		}
+	})
+
+	t.Run("removes only cost cap label when not exceeded", func(t *testing.T) {
+		var removed []string
+		d := newTestDeps(t)
+		d.git.GetPRForBranchFunc = func(_, _, _ string) (*models.PRDetails, error) {
+			return &models.PRDetails{Number: 42}, nil
+		}
+		d.git.RemovePRLabelFunc = func(_, _ string, _ int, label string) error { removed = append(removed, label); return nil }
+
+		settings := makeSettings([]models.RepoSettings{{Owner: "org", Repo: "repo"}})
+		p := d.pipeline(t)
+		executor.ApplyCostCapPRLabel(p, zap.NewNop(), "TEST-1", settings, false)
+
+		if len(removed) != 1 || removed[0] != models.DefaultCostCapLabel {
+			t.Errorf("removed = %v, want [%s]", removed, models.DefaultCostCapLabel)
+		}
+	})
+
+	t.Run("no-op when label is disabled", func(t *testing.T) {
+		var prLookups int
+		empty := ""
+		d := newTestDeps(t)
+		d.git.GetPRForBranchFunc = func(_, _, _ string) (*models.PRDetails, error) {
+			prLookups++
+			return &models.PRDetails{Number: 42}, nil
+		}
+
+		settings := &models.ProjectSettings{
+			Repos: []models.RepoSettings{{Owner: "org", Repo: "repo"}},
+			PRValidationLabels: models.PRValidationLabels{
+				CostCapExceeded: &empty,
+			},
+		}
+		p := d.pipeline(t)
+		executor.ApplyCostCapPRLabel(p, zap.NewNop(), "TEST-1", settings, true)
+
+		if prLookups != 0 {
+			t.Errorf("expected no PR lookups when label disabled, got %d", prLookups)
+		}
+	})
+
+	t.Run("skips repos without open PRs", func(t *testing.T) {
+		var added []string
+		d := newTestDeps(t)
+		d.git.GetPRForBranchFunc = func(_, repo, _ string) (*models.PRDetails, error) {
+			if repo == "repo-with-pr" {
+				return &models.PRDetails{Number: 10}, nil
+			}
+			return nil, nil
+		}
+		d.git.AddPRLabelFunc = func(_, repo string, prNum int, label string) error {
+			added = append(added, fmt.Sprintf("%s#%d:%s", repo, prNum, label))
+			return nil
+		}
+		d.git.RemovePRLabelFunc = func(_, _ string, _ int, _ string) error { return nil }
+
+		settings := makeSettings([]models.RepoSettings{
+			{Owner: "org", Repo: "repo-no-pr"},
+			{Owner: "org", Repo: "repo-with-pr"},
+		})
+		p := d.pipeline(t)
+		executor.ApplyCostCapPRLabel(p, zap.NewNop(), "TEST-1", settings, true)
+
+		if len(added) != 1 {
+			t.Fatalf("added = %v, want 1 entry", added)
+		}
+		want := fmt.Sprintf("repo-with-pr#10:%s", models.DefaultCostCapLabel)
+		if added[0] != want {
+			t.Errorf("added[0] = %q, want %q", added[0], want)
+		}
+	})
+
+	t.Run("multi-repo applies to all PRs", func(t *testing.T) {
+		var addedRepos []string
+		d := newTestDeps(t)
+		d.git.GetPRForBranchFunc = func(_, repo, _ string) (*models.PRDetails, error) {
+			if repo == "repo1" {
+				return &models.PRDetails{Number: 10}, nil
+			}
+			return &models.PRDetails{Number: 20}, nil
+		}
+		d.git.AddPRLabelFunc = func(_, repo string, _ int, _ string) error {
+			addedRepos = append(addedRepos, repo)
+			return nil
+		}
+		d.git.RemovePRLabelFunc = func(_, _ string, _ int, _ string) error { return nil }
+
+		settings := makeSettings([]models.RepoSettings{
+			{Owner: "org", Repo: "repo1"},
+			{Owner: "org", Repo: "repo2"},
+		})
+		p := d.pipeline(t)
+		executor.ApplyCostCapPRLabel(p, zap.NewNop(), "TEST-1", settings, true)
+
+		if len(addedRepos) != 2 {
+			t.Fatalf("expected label on 2 repos, got %d", len(addedRepos))
+		}
+	})
+
+	t.Run("PR lookup errors are swallowed", func(t *testing.T) {
+		d := newTestDeps(t)
+		d.git.GetPRForBranchFunc = func(_, _, _ string) (*models.PRDetails, error) {
+			return nil, fmt.Errorf("API error")
+		}
+
+		settings := makeSettings([]models.RepoSettings{{Owner: "org", Repo: "repo"}})
+		p := d.pipeline(t)
+		executor.ApplyCostCapPRLabel(p, zap.NewNop(), "TEST-1", settings, true)
 	})
 }

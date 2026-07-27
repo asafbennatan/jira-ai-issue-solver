@@ -51,8 +51,7 @@ func (p *Pipeline) executeFeedback(ctx context.Context, job *jobmanager.Job) (re
 		logger.Info("Per-ticket cost cap exceeded, skipping feedback",
 			zap.String("ticket", job.TicketKey),
 			zap.Float64("cap_usd", settings.MaxTicketCostUSD))
-		allLabels := models.AllPipelineLabels(settings.FailureLabels, settings.LifecycleLabels)
-		p.setPipelineLabel(logger, job.TicketKey, allLabels, settings.FailureLabels.Blocked)
+		p.applyCostCapPRLabel(logger, job.TicketKey, settings, true)
 		return result, errTicketCostCapExceeded
 	}
 

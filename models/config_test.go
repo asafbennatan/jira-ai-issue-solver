@@ -1907,6 +1907,9 @@ workspaces:
 		if vl.NonzeroExit != "" {
 			t.Errorf("NonzeroExit = %q, want empty", vl.NonzeroExit)
 		}
+		if vl.CostCapExceeded != nil {
+			t.Errorf("CostCapExceeded = %v, want nil", vl.CostCapExceeded)
+		}
 	})
 
 	t.Run("custom values", func(t *testing.T) {
@@ -1940,6 +1943,7 @@ jira:
       pr_validation_labels:
         validation_failed: "custom-vf"
         nonzero_exit: "custom-nze"
+        cost_cap_exceeded: "custom-cce"
 github:
   app_id: 123456
   private_key_path: "` + tmpKeyPath + `"
@@ -1968,6 +1972,70 @@ workspaces:
 		}
 		if vl.NonzeroExit != "custom-nze" {
 			t.Errorf("NonzeroExit = %q, want custom-nze", vl.NonzeroExit)
+		}
+		if vl.CostCapExceeded == nil || *vl.CostCapExceeded != "custom-cce" {
+			t.Errorf("CostCapExceeded = %v, want ptr to custom-cce", vl.CostCapExceeded)
+		}
+	})
+}
+
+func TestPRValidationLabels_CostCapLabel(t *testing.T) {
+	t.Run("nil pointer returns empty", func(t *testing.T) {
+		vl := PRValidationLabels{CostCapExceeded: nil}
+		if got := vl.CostCapLabel(); got != "" {
+			t.Errorf("CostCapLabel() = %q, want empty", got)
+		}
+	})
+
+	t.Run("empty string pointer returns empty", func(t *testing.T) {
+		empty := ""
+		vl := PRValidationLabels{CostCapExceeded: &empty}
+		if got := vl.CostCapLabel(); got != "" {
+			t.Errorf("CostCapLabel() = %q, want empty", got)
+		}
+	})
+
+	t.Run("non-empty pointer returns value", func(t *testing.T) {
+		label := "ai-budget-exceeded"
+		vl := PRValidationLabels{CostCapExceeded: &label}
+		if got := vl.CostCapLabel(); got != "ai-budget-exceeded" {
+			t.Errorf("CostCapLabel() = %q, want ai-budget-exceeded", got)
+		}
+	})
+}
+
+func TestPRValidationLabels_All_IncludesCostCap(t *testing.T) {
+	t.Run("includes cost cap label", func(t *testing.T) {
+		label := "ai-budget-exceeded"
+		vl := PRValidationLabels{
+			ValidationFailed: "vf",
+			NonzeroExit:      "nze",
+			CostCapExceeded:  &label,
+		}
+		got := vl.All()
+		want := []string{"vf", "nze", "ai-budget-exceeded"}
+		if len(got) != len(want) {
+			t.Fatalf("All() length = %d, want %d", len(got), len(want))
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("All()[%d] = %q, want %q", i, got[i], want[i])
+			}
+		}
+	})
+
+	t.Run("nil cost cap returns empty in slice", func(t *testing.T) {
+		vl := PRValidationLabels{
+			ValidationFailed: "vf",
+			NonzeroExit:      "nze",
+			CostCapExceeded:  nil,
+		}
+		got := vl.All()
+		if len(got) != 3 {
+			t.Fatalf("All() length = %d, want 3", len(got))
+		}
+		if got[2] != "" {
+			t.Errorf("All()[2] = %q, want empty", got[2])
 		}
 	})
 }

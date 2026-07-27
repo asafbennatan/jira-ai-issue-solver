@@ -423,6 +423,10 @@ func (ll LifecycleLabels) All() []string {
 	return []string{ll.Queued, ll.Review, ll.Merged}
 }
 
+// DefaultCostCapLabel is the default GitHub PR label applied when the
+// per-ticket AI session cost cap is exceeded.
+const DefaultCostCapLabel = "ai-budget-exceeded"
+
 // PRValidationLabels holds configurable GitHub PR labels applied when
 // the AI session's validation or exit code indicates a problem. Labels
 // are mutually exclusive: at most one is set on a given PR. Empty
@@ -436,12 +440,29 @@ type PRValidationLabels struct {
 	// non-zero code (and validation was not explicitly reported
 	// as failed).
 	NonzeroExit string `yaml:"nonzero_exit" mapstructure:"nonzero_exit"`
+
+	// CostCapExceeded is applied when the per-ticket AI session
+	// cost cap has been reached. Defaults to DefaultCostCapLabel
+	// when not configured (nil); set to "" to disable.
+	CostCapExceeded *string `yaml:"cost_cap_exceeded,omitempty" mapstructure:"cost_cap_exceeded"`
+}
+
+// CostCapLabel returns the raw cost cap exceeded label value.
+// Returns empty string when the pointer is nil or points to "".
+// The default (DefaultCostCapLabel) is applied by the project
+// resolver, not here; callers outside the resolver should only
+// see post-resolution values.
+func (vl PRValidationLabels) CostCapLabel() string {
+	if vl.CostCapExceeded == nil {
+		return ""
+	}
+	return *vl.CostCapExceeded
 }
 
 // All returns the configured label strings in a fixed order. Empty
 // strings (disabled labels) are included; callers should skip them.
 func (vl PRValidationLabels) All() []string {
-	return []string{vl.ValidationFailed, vl.NonzeroExit}
+	return []string{vl.ValidationFailed, vl.NonzeroExit, vl.CostCapLabel()}
 }
 
 // AllPipelineLabels returns all configured failure and lifecycle labels

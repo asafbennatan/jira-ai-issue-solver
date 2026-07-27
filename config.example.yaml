@@ -63,6 +63,7 @@ jira:
       pr_validation_labels:
         validation_failed: "ai-validation-failed"  # AI explicitly reported validation failure
         nonzero_exit: "ai-nonzero-exit"            # AI container exited with non-zero code
+        # cost_cap_exceeded: "ai-budget-exceeded"  # Per-ticket cost cap reached (default; set to "" to disable)
 
       # Status transitions can be configured per ticket type
       # All ticket types must be explicitly configured
