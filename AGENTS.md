@@ -20,7 +20,7 @@ The application uses consumer-defined interfaces and clear package boundaries:
 - **`projectresolver/`** — `Resolver` interface mapping ticket keys to project settings (component-to-repo, status transitions, imports)
 - **`executor/`** — `Pipeline` implementing new-ticket and PR-feedback execution flows
 - **`jobmanager/`** — `Coordinator` with concurrency control, retry tracking, and circuit breaker
-- **`scanner/`** — `WorkItemScanner` (new tickets) and `FeedbackScanner` (PR review comments); stateless, event-driven
+- **`scanner/`** — `WorkItemScanner` (new tickets), `FeedbackScanner` (PR review comments), and `TriageLabelScanner` (cleans up triage labels when tickets leave the triage phase); stateless, event-driven
 - **`commentfilter/`** — Shared bot-loop prevention (ignored users, known bots, thread depth limits)
 - **`recovery/`** — `StartupRunner` for crash recovery (orphan container cleanup, stuck ticket reset, workspace TTL)
 - **`costtracker/`** — `FileTracker` for daily AI session cost tracking with budget enforcement
