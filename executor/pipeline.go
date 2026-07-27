@@ -141,6 +141,7 @@ func (p *Pipeline) executeNewTicket(ctx context.Context, job *jobmanager.Job) (r
 		p.applyCostCapPRLabel(logger, job.TicketKey, settings, true)
 		return result, errTicketCostCapExceeded
 	}
+	p.applyCostCapPRLabel(logger, job.TicketKey, settings, false)
 
 	// --- Clean retry: delete stale branches and workspace ---
 	if job.CleanRetry {

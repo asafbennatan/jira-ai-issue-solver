@@ -851,13 +851,20 @@ func TestApplyCostCapPRLabel(t *testing.T) {
 	})
 
 	t.Run("PR lookup errors are swallowed", func(t *testing.T) {
+		var labelCalls int
 		d := newTestDeps(t)
 		d.git.GetPRForBranchFunc = func(_, _, _ string) (*models.PRDetails, error) {
 			return nil, fmt.Errorf("API error")
 		}
+		d.git.AddPRLabelFunc = func(_, _ string, _ int, _ string) error { labelCalls++; return nil }
+		d.git.RemovePRLabelFunc = func(_, _ string, _ int, _ string) error { labelCalls++; return nil }
 
 		settings := makeSettings([]models.RepoSettings{{Owner: "org", Repo: "repo"}})
 		p := d.pipeline(t)
 		executor.ApplyCostCapPRLabel(p, zap.NewNop(), "TEST-1", settings, true)
+
+		if labelCalls != 0 {
+			t.Errorf("expected no label calls on lookup error, got %d", labelCalls)
+		}
 	})
 }

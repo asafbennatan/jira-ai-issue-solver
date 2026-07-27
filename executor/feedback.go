@@ -54,6 +54,7 @@ func (p *Pipeline) executeFeedback(ctx context.Context, job *jobmanager.Job) (re
 		p.applyCostCapPRLabel(logger, job.TicketKey, settings, true)
 		return result, errTicketCostCapExceeded
 	}
+	p.applyCostCapPRLabel(logger, job.TicketKey, settings, false)
 
 	defer func() {
 		// On failure post error comment (but do NOT revert status --
