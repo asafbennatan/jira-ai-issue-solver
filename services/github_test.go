@@ -264,8 +264,6 @@ func TestCreatePR_GitHubApp(t *testing.T) {
 				t.Error("PR creation request was not captured")
 			}
 
-			// Verify maintainer_can_modify is explicitly set to false
-			// This is required for GitHub App tokens creating PRs from forks
 			if prCreationRequest != nil {
 				bodyBytes, _ := io.ReadAll(prCreationRequest.Body)
 				var payload models.GitHubCreatePRRequest
@@ -273,9 +271,9 @@ func TestCreatePR_GitHubApp(t *testing.T) {
 					t.Errorf("Failed to unmarshal request body: %v", err)
 				} else {
 					if payload.MaintainerCanModify == nil {
-						t.Error("Expected maintainer_can_modify to be set to false, but got nil")
-					} else if *payload.MaintainerCanModify != false {
-						t.Errorf("Expected maintainer_can_modify to be false, but got %v", *payload.MaintainerCanModify)
+						t.Error("Expected maintainer_can_modify to be set to true, but got nil")
+					} else if *payload.MaintainerCanModify != true {
+						t.Errorf("Expected maintainer_can_modify to be true, but got %v", *payload.MaintainerCanModify)
 					}
 				}
 			}

@@ -1517,16 +1517,13 @@ func (s *GitHubServiceImpl) CreatePR(params models.PRParams) (*models.PR, error)
 		zap.String("repo", params.Repo),
 		zap.Int64("installationID", installationID))
 
-	// Set maintainer_can_modify to false explicitly
-	// This is required when using GitHub App tokens to create PRs from forks
-	// See: https://github.com/orgs/community/discussions/39178
-	falseValue := false
+	trueValue := true
 	newPR := &github.NewPullRequest{
 		Title:               &params.Title,
 		Body:                &params.Body,
 		Head:                &params.Head,
 		Base:                &params.Base,
-		MaintainerCanModify: &falseValue,
+		MaintainerCanModify: &trueValue,
 		Draft:               &params.Draft,
 	}
 
