@@ -163,7 +163,7 @@ func TestSetPipelineLabel(t *testing.T) {
 }
 
 func TestClearFailureLabels(t *testing.T) {
-	t.Run("removes all configured labels", func(t *testing.T) {
+	t.Run("removes only executor-owned labels", func(t *testing.T) {
 		fl := models.FailureLabels{
 			CIFailing:       "ci-fail",
 			Rejected:        "rejected",
@@ -177,14 +177,40 @@ func TestClearFailureLabels(t *testing.T) {
 		p := d.pipeline(t)
 		executor.ClearFailureLabels(p, zap.NewNop(), "TEST-1", fl)
 
-		if len(removed) != 4 {
-			t.Fatalf("removed = %v, want 4 entries", removed)
+		if len(removed) != 2 {
+			t.Fatalf("removed = %v, want 2 entries (blocked + fork-missing)", removed)
 		}
-		want := map[string]bool{"ci-fail": true, "rejected": true, "blocked": true, "fork-missing": true}
+		want := map[string]bool{"blocked": true, "fork-missing": true}
 		for _, l := range removed {
 			if !want[l] {
 				t.Errorf("unexpected removal of %q", l)
 			}
+		}
+	})
+
+	t.Run("does not clear scanner-managed labels", func(t *testing.T) {
+		fl := models.FailureLabels{
+			CIFailing:       "ci-fail",
+			Rejected:        "rejected",
+			Blocked:         "blocked",
+			ForkUserMissing: "fork-missing",
+		}
+		var removed []string
+		d := newTestDeps(t)
+		d.tracker.RemoveLabelFunc = func(_, label string) error { removed = append(removed, label); return nil }
+
+		p := d.pipeline(t)
+		executor.ClearFailureLabels(p, zap.NewNop(), "TEST-1", fl)
+
+		removedSet := make(map[string]bool, len(removed))
+		for _, l := range removed {
+			removedSet[l] = true
+		}
+		if removedSet["ci-fail"] {
+			t.Error("ci-fail should not be cleared (scanner-managed)")
+		}
+		if removedSet["rejected"] {
+			t.Error("rejected should not be cleared (scanner-managed)")
 		}
 	})
 

@@ -450,24 +450,26 @@ func (s *FeedbackScanner) updateFailureLabels(
 		return
 	}
 
+	currentLabels := labelSet(item.Labels)
+
 	switch {
 	case !obs.hasOpenPR:
 		if s.detectRejection(logger, repos, heads) {
 			if fl.Rejected != "" {
-				s.applyPipelineLabel(logger, item.Key, allLabels, fl.Rejected)
+				s.applyPipelineLabel(logger, item.Key, allLabels, currentLabels, fl.Rejected)
 			}
 			return
 		}
 	case obs.ciIsFailing:
 		if fl.CIFailing != "" {
-			s.applyPipelineLabel(logger, item.Key, allLabels, fl.CIFailing)
+			s.applyPipelineLabel(logger, item.Key, allLabels, currentLabels, fl.CIFailing)
 		}
 		return
 	case obs.ciChecked && !obs.ciIsFailing:
 		if fl.CIFailing != "" {
 			if ll.Review != "" {
-				s.applyPipelineLabel(logger, item.Key, allLabels, ll.Review)
-			} else {
+				s.applyPipelineLabel(logger, item.Key, allLabels, currentLabels, ll.Review)
+			} else if currentLabels[fl.CIFailing] {
 				if err := s.labels.RemoveLabel(item.Key, fl.CIFailing); err != nil {
 					logger.Debug("Failed to remove CI-failing label", zap.Error(err))
 				}
@@ -507,30 +509,41 @@ func (s *FeedbackScanner) detectRejection(
 // applyPipelineLabel sets one pipeline label and removes all others
 // from both failure and lifecycle groups. This enforces mutual
 // exclusivity — a ticket should have exactly one pipeline label.
+// Idempotent: skips API calls when labels are already correct.
 // No-op when target is empty (not configured).
 func (s *FeedbackScanner) applyPipelineLabel(
 	logger *zap.Logger,
 	ticketKey string,
 	allLabels []string,
+	currentLabels map[string]bool,
 	target string,
 ) {
 	if target == "" {
 		return
 	}
 	for _, label := range allLabels {
-		if label != "" && label != target {
+		if label != "" && label != target && currentLabels[label] {
 			if err := s.labels.RemoveLabel(ticketKey, label); err != nil {
 				logger.Debug("Failed to remove pipeline label",
 					zap.String("label", label), zap.Error(err))
 			}
 		}
 	}
-	if target != "" {
+	if !currentLabels[target] {
 		if err := s.labels.AddLabel(ticketKey, target); err != nil {
 			logger.Warn("Failed to add pipeline label",
 				zap.String("label", target), zap.Error(err))
 		}
 	}
+}
+
+// labelSet converts a label slice to a set for O(1) lookups.
+func labelSet(labels []string) map[string]bool {
+	s := make(map[string]bool, len(labels))
+	for _, l := range labels {
+		s[l] = true
+	}
+	return s
 }
 
 // checkAndApplyMergedLabel checks whether all repos that had a PR
@@ -555,7 +568,7 @@ func (s *FeedbackScanner) checkAndApplyMergedLabel(
 		return
 	}
 
-	s.applyPipelineLabel(logger, item.Key, allLabels, ll.Merged)
+	s.applyPipelineLabel(logger, item.Key, allLabels, labelSet(item.Labels), ll.Merged)
 
 	if s.mergedStatusResolver == nil || s.statusTransitioner == nil {
 		return
