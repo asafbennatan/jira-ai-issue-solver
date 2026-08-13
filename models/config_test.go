@@ -2223,3 +2223,17 @@ func TestProjectConfig_ValidateTriageLabels(t *testing.T) {
 		})
 	}
 }
+
+func TestFailureLabels_ExecutorOwnedCoversAllFields(t *testing.T) {
+	fl := FailureLabels{
+		CIFailing:       "ci",
+		Rejected:        "rej",
+		Blocked:         "blk",
+		ForkUserMissing: "fork",
+	}
+	scannerManaged := 2 // ci_failing, rejected
+	if len(fl.All()) != len(fl.ExecutorOwned())+scannerManaged {
+		t.Fatalf("All()=%d, ExecutorOwned()=%d: when adding a new FailureLabels field, update ExecutorOwned() or increment scannerManaged",
+			len(fl.All()), len(fl.ExecutorOwned()))
+	}
+}

@@ -1389,6 +1389,9 @@ func TestFeedbackScanner_FailureLabels_Rejected_MultiRepo_ErrorOnOneRepo(t *test
 
 func TestFeedbackScanner_FailureLabels_CIErrorPreservesLabel(t *testing.T) {
 	d := newFeedbackDeps()
+	d.searcher.SearchWorkItemsFunc = func(_ models.SearchCriteria) ([]models.WorkItem, error) {
+		return []models.WorkItem{{Key: "PROJ-1", Labels: []string{"ci-fail"}}}, nil
+	}
 	d.prs.GetPRCommentsFunc = func(_, _ string, _ int, _ time.Time) ([]models.PRComment, error) {
 		return []models.PRComment{}, nil
 	}
