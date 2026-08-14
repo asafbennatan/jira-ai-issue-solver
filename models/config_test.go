@@ -2251,17 +2251,28 @@ func TestFailureLabels_ExecutorOwnedCoversAllFields(t *testing.T) {
 		}
 	}
 
-	allSet := make(map[string]bool, len(fl.All()))
-	for _, l := range fl.All() {
-		allSet[l] = true
-	}
-	if len(fl.All()) != len(wantExecutorOwned)+len(wantScannerManaged) {
-		t.Fatalf("All()=%d, want %d: update wantExecutorOwned or wantScannerManaged when adding a new FailureLabels field",
-			len(fl.All()), len(wantExecutorOwned)+len(wantScannerManaged))
+	wantAll := make(map[string]bool, len(wantExecutorOwned)+len(wantScannerManaged))
+	for l := range wantExecutorOwned {
+		wantAll[l] = true
 	}
 	for l := range wantScannerManaged {
+		wantAll[l] = true
+	}
+
+	allSet := make(map[string]bool, len(fl.All()))
+	for _, l := range fl.All() {
+		if allSet[l] {
+			t.Errorf("All() returned duplicate %q", l)
+		}
+		allSet[l] = true
+	}
+	if len(allSet) != len(wantAll) {
+		t.Fatalf("All()=%d, want %d: update wantExecutorOwned or wantScannerManaged when adding a new FailureLabels field",
+			len(allSet), len(wantAll))
+	}
+	for l := range wantAll {
 		if !allSet[l] {
-			t.Errorf("All() missing scanner-managed label %q", l)
+			t.Errorf("All() missing label %q", l)
 		}
 	}
 }
