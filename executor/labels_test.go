@@ -180,10 +180,13 @@ func TestClearFailureLabels(t *testing.T) {
 		if len(removed) != 2 {
 			t.Fatalf("removed = %v, want 2 entries (blocked + fork-missing)", removed)
 		}
-		want := map[string]bool{"blocked": true, "fork-missing": true}
+		counts := make(map[string]int, len(removed))
 		for _, l := range removed {
-			if !want[l] {
-				t.Errorf("unexpected removal of %q", l)
+			counts[l]++
+		}
+		for _, want := range []string{"blocked", "fork-missing"} {
+			if counts[want] != 1 {
+				t.Errorf("expected exactly 1 removal of %q, got %d", want, counts[want])
 			}
 		}
 	})

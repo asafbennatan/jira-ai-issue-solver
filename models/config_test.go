@@ -2231,9 +2231,37 @@ func TestFailureLabels_ExecutorOwnedCoversAllFields(t *testing.T) {
 		Blocked:         "blk",
 		ForkUserMissing: "fork",
 	}
-	scannerManaged := 2 // ci_failing, rejected
-	if len(fl.All()) != len(fl.ExecutorOwned())+scannerManaged {
-		t.Fatalf("All()=%d, ExecutorOwned()=%d: when adding a new FailureLabels field, update ExecutorOwned() or increment scannerManaged",
-			len(fl.All()), len(fl.ExecutorOwned()))
+
+	wantExecutorOwned := map[string]bool{"blk": true, "fork": true}
+	wantScannerManaged := map[string]bool{"ci": true, "rej": true}
+
+	got := make(map[string]bool, len(fl.ExecutorOwned()))
+	for _, l := range fl.ExecutorOwned() {
+		if got[l] {
+			t.Errorf("ExecutorOwned() returned duplicate %q", l)
+		}
+		got[l] = true
+	}
+	if len(got) != len(wantExecutorOwned) {
+		t.Fatalf("ExecutorOwned() = %v, want %v", fl.ExecutorOwned(), wantExecutorOwned)
+	}
+	for l := range wantExecutorOwned {
+		if !got[l] {
+			t.Errorf("ExecutorOwned() missing %q", l)
+		}
+	}
+
+	allSet := make(map[string]bool, len(fl.All()))
+	for _, l := range fl.All() {
+		allSet[l] = true
+	}
+	if len(fl.All()) != len(wantExecutorOwned)+len(wantScannerManaged) {
+		t.Fatalf("All()=%d, want %d: update wantExecutorOwned or wantScannerManaged when adding a new FailureLabels field",
+			len(fl.All()), len(wantExecutorOwned)+len(wantScannerManaged))
+	}
+	for l := range wantScannerManaged {
+		if !allSet[l] {
+			t.Errorf("All() missing scanner-managed label %q", l)
+		}
 	}
 }
